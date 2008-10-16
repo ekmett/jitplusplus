@@ -20,11 +20,11 @@ dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
 #nobase_inst_HEADERS once i make an instdir
-nobase_noinst_HEADERS = jitney/memory.hpp jitney/memory_linux.hpp jitney/register_file.hpp
+nobase_noinst_HEADERS = jitney/interpreter.hpp jitney/memory.hpp jitney/tracer.hpp
 
 # build the runtime system
 lib_LIBRARIES = libjitney.a
-libjitney_a_SOURCES = jitney/memory_linux.cpp
+libjitney_a_SOURCES = jitney/interpreter.cpp jitney/memory.cpp jitney/tracer.cpp
 libjitney_a_LIBADD = $(LIBOBJS)
 
 # test suite

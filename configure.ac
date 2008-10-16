@@ -5,27 +5,28 @@ AC_PREREQ(2.61)
 AC_INIT([jitney],[0.0.1],[ekmett@gmail.com])
 AC_SUBST(JITNEY_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
 AC_COPYRIGHT([Copyright (c) 2008 Edward Kmett. All Rights Reserved.])
+
 AC_CONFIG_AUX_DIR([bin])
 AC_CONFIG_HEADER([jitney/config.hpp])
 AC_CONFIG_SRCDIR([.])
 
+# add include guards to make jitney/config.hpp idempotent
 AH_TOP([#ifndef INCLUDED_JITNEY_CONFIG
 #define INCLUDED_JITNEY_CONFIG
-#include <boost/config.hpp>])
+// #include <boost/config.hpp>])
 AH_BOTTOM([#endif // INCLUDED_JITNEY_CONFIG])
 
+# find darcs version control system (autogenerates ChangeLog)
 AC_ARG_VAR([DARCS],[darcs executable])
-
-# version control system (autogenerates ChangeLog)
 AC_CHECK_PROG([DARCS],[darcs],[/usr/bin/darcs])
 
+# use C++
 AC_LANG([C++])
 AC_PROG_CXX
 
-# gnu extensions
-# AC_USE_SYSTEM_EXTENSIONS # defines _GNU_SOURCE
 # check to see if we support gcc style attributes
 AX_C_HAVE_ATTRIBUTE
+
 # do we support the cold attribute added in 4.3?
 AX_C_HAVE_ATTRIBUTE_COLD
 
@@ -34,75 +35,30 @@ AM_INIT_AUTOMAKE([foreign subdir-objects])
 
 # libraries:
 AX_BOOST_BASE([1.36])
-#AX_BOOST_ASIO
-#AX_BOOST_SIGNALS
-#AX_BOOST_THREAD
+
+# used for the unit tests
 AX_BOOST_UNIT_TEST_FRAMEWORK
 
-# pthreads used pretty much everywhere
+# pthreads are used pretty much everywhere
 AC_CHECK_HEADERS_ONCE(pthread.h)
 AX_CXX_PTHREAD
 
-# udis86 used for disassembly on x86 and x86-64
-# AC_CHECK_HEADERS_ONCE(udis86.h)
-# AX_UDIS86
-
-# gmp used for bignums
-# AC_CHECK_HEADERS_ONCE(gmpxx.h)
-# AC_CHECK_LIB(gmpxx, main)
-
-# IBM ICU used for unicode support
-# AC_CHECK_HEADERS_ONCE(unicode/utypes.h)
-# AC_CHECK_LIB(icuuc, main) # _ZN7icu_3_810NormalizerD0Ev
-
-# google gflags used for all runtime system command line options
-# AC_CHECK_HEADERS(gflags/gflags.h)
-# AC_CHECK_LIB(gflags, main) # _ZN6google7GetArgvEv)
-
-# GNU libiberty
-# AC_CHECK_LIB(iberty, xmalloc)
-
-# intel thread building blocks used for task evaluation and atomic operations
-# AC_CHECK_HEADERS(tbb/atomic.h)
-# AC_CHECK_LIB(tbb, main)
-
-# google sparsehash used as a fast hash table
-# AC_CHECK_HEADERS_ONCE(google/sparse_hash_map google/sparse_hash_set google/dense_hash_map google/dense_hash_set)
-
-# check to see if we need -ldl to dlopen
-# AC_CHECK_LIB(dl, dlopen)
+# udis86 used for disassembly on x86 and x86-64 for debug purposes
+AC_CHECK_HEADERS_ONCE(udis86.h)
+AX_UDIS86
 
 # tune to current architecture
 # AX_GCC_ARCHFLAG([no],[CPPFLAGS="$CPPFLAGS $ax_cv_gcc_archflag"])
 
-# endianness, um, we need to know processor architecture, we're in deeper than this. =)
-# AC_C_BIGENDIAN(AC_SUBST([ENDIAN],[big]),AC_SUBST([ENDIAN],[little]))
-
 # do we have namespaces? and what namespace is the STL in?
 AC_CXX_NAMESPACES
-AC_CXX_STL_NAMESPACE
 
 if test "$ac_cv_cxx_namespaces" = no; then
   AC_ERROR([Namespace support required])
 fi
 
-# headers
-# AC_HEADER_TIME
-
-# signal handling
-# AC_TYPE_SIGNAL
-
-# AC_CHECK_HEADERS(signal.h stdio.h stdlib.h unistd.h)
-# AC_HAVE_FUNCS(getpagesize sysconf)
-
-# AX_CHECK_DEFINED(_SC_PAGESIZE, unistd.h,[AC_DEFINE(HAVE_SC_PAGESIZE,1,["define if we can use _SC_PAGE_SIZE from unistd.h"])])
-# AX_CHECK_DEFINED(_SC_NPROCESSORS_CONF, unistd.h,[AC_DEFINE(HAVE_SC_NPROCESSORS_CONF,1,["define if we can use _SC_NPROCESSORS_CONF from unistd.h"])])
-
 # figure out how to handle TLS
-# AX_TLS 
-
-# figure out stack growth direction for chicken-scheme-like hacks
-# AX_STACK_GROWS_DOWNWARD
+AX_TLS 
 
 AH_VERBATIM([GCC_VERSION],
 [/* Simplified version checking for GCC */
@@ -114,18 +70,14 @@ AH_VERBATIM([GCC_VERSION],
 # abuse GNU attributes. NB. the __attribute__ macro below could encompass all of these uses.
 AH_VERBATIM([HAVE_ATTRIBUTE],
 [/* Encapsulate a number of optional GNU attributes */
-#ifdef HAVE_ATTRIBUTE
+#ifndef HAVE_ATTRIBUTE
+# define __attribute__(x)
+#endif
+
 # define NORETURN __attribute__ ((noreturn))
 # define ALWAYS_INLINE __attribute__ ((always_inline)) inline
 # define UNUSED __attribute__ ((unused))
 # define ALIGNED(x) __attribute__ ((aligned(x))
-#else
-# define __attribute__(x)
-# define NORETURN
-# define ALWAYS_INLINE inline
-# define UNUSED
-# define ALIGNED
-#endif
 
 # ifdef HAVE_ATTRIBUTE_COLD
 #  define NORETURN_COLD __attribute__ ((noreturn,cold))

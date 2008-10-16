@@ -82,13 +82,6 @@ COPYLEFT
   permitted in any medium without royalty provided the copyright notice
   and this notice are preserved.
 
---------------------------------------------------------------------
-
-* compat/alloca.c
-
-  (Mostly) portable public-domain implementation -- D A Gwyn
-
-
 ---------------------------------------------------------------------
 
 * m4/ax_check_compiler_flags.m4

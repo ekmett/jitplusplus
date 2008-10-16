@@ -1,0 +1,117 @@
+/* jitney/config.hpp.in.  Generated from configure.ac by autoheader.  */
+
+#ifndef INCLUDED_JITNEY_CONFIG
+#define INCLUDED_JITNEY_CONFIG
+// #include <boost/config.hpp>
+
+/* Simplified version checking for GCC */
+#ifdef __GNUC__
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+#endif
+
+
+/* Encapsulate a number of optional GNU attributes */
+#ifndef HAVE_ATTRIBUTE
+# define __attribute__(x)
+#endif
+
+# define NORETURN __attribute__ ((noreturn))
+# define ALWAYS_INLINE __attribute__ ((always_inline)) inline
+# define UNUSED __attribute__ ((unused))
+# define ALIGNED(x) __attribute__ ((aligned(x))
+
+# ifdef HAVE_ATTRIBUTE_COLD
+#  define NORETURN_COLD __attribute__ ((noreturn,cold))
+#  define COLD __attribute__ ((cold))
+# else 
+#  define NORETURN_COLD NORETURN
+#  define COLD
+# endif
+
+
+/* define if your compiler has __attribute__((cold)) */
+#undef HAVE_ATTRIBUTE_COLD
+
+/* define if the Boost library is available */
+#undef HAVE_BOOST
+
+/* define if the Boost::Unit_Test_Framework library is available */
+#undef HAVE_BOOST_UNIT_TEST_FRAMEWORK
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H
+
+/* Define to 1 if you have the `udis86' library (-ludis86). */
+#undef HAVE_LIBUDIS86
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
+/* define if the compiler implements namespaces */
+#undef HAVE_NAMESPACES
+
+/* Define if you have POSIX threads libraries and header files. */
+#undef HAVE_PTHREAD
+
+/* Define to 1 if you have the <pthread.h> header file. */
+#undef HAVE_PTHREAD_H
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you have the <udis86.h> header file. */
+#undef HAVE_UDIS86_H
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H
+
+/* Name of package */
+#undef PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* Define to necessary symbol if this constant uses a non-standard name on
+   your system. */
+#undef PTHREAD_CREATE_JOINABLE
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
+
+/* If the compiler supports a TLS storage class define it to that here */
+#undef TLS
+
+/* Version number of package */
+#undef VERSION
+
+/* Define if using udis86 as a disassembler. */
+#undef WITH_UDIS86
+
+#endif // INCLUDED_JITNEY_CONFIG
