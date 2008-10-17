@@ -7,7 +7,11 @@ namespace {
 }
 
 namespace jitney { 
+    options::options() {} 
     options::options(int & argc, char ** & argv, bool remove_flags) { 
+	init(argc,argv,remove_flags);
+    }
+    void options::init(int & argc, char ** & argv, bool remove_flags) { 
 	if (!initialized) { 
 	    initialized = true;
 	    google::ParseCommandLineFlags(&argc,&argv,true);
@@ -16,7 +20,5 @@ namespace jitney {
 	    LOG(DFATAL) << "Multiple initialization attempts";
 	} 
     }  
-    options::~options() {
-	initialized = false;
-    }
+    options::~options() {}
 }

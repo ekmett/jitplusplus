@@ -30,7 +30,7 @@ libjitney_la_LIBADD = $(LIBOBJS)
 # test suite
 noinst_PROGRAMS = tests
 tests_DEPENDENCIES = libjitney.la
-tests_SOURCES = test/options.cc test/branch.cc test/exception.cc
+tests_SOURCES = test/options.cc test/suite.cc
 tests_LDADD = libjitney.la \
 	$(BOOST_UNIT_TEST_FRAMEWORK_LIB) \
 	$(PTHREAD_LIBS) \

@@ -26,6 +26,7 @@ namespace {
             total += result;
         } while (result > 0);
         close(f);
+	VLOG(2) << total << " bytes in /proc/self/maps";
         return total;
     }
 
@@ -120,6 +121,7 @@ namespace jitney {
                 CHECK_NE(file_size,0) << "Unable to read /proc/self/maps";
 		if (file_size >= buf_size) {
 		    buf_size = std::max(buf_size,file_size + (file_size >> 1) + 1);
+		    VLOG(2) << "growing buffer to " << buf_size;
                     buf = reinterpret_cast<char*>(alloca(buf_size));
 	        }
             }
@@ -143,11 +145,15 @@ namespace jitney {
         } while (file_size >= buf_size || file_size != old_file_size);
         buf[file_size] = '\0';
 
+        VLOG(1) << "read /proc/self/maps";
+	VLOG(2) << buf;
+
 	// now that we've read the file, parse the file.
 	linux_proc_self_maps_parser parser(buf);
 	while (!parser.eof()) {
 	    m_ranges.push_back(parser.parse());
 	}
+	VLOG(1) << "parsed /proc/self/maps";
     }
 
     namespace { 

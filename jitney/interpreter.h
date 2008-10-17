@@ -7,8 +7,9 @@ namespace jitney {
     class interpreter : public tracer { 
     public:
 	interpreter() : tracer() {}
-	void run();
+	inline void operator ()() { start(); } 
     private:
+	void run();
 	void interpret();
     };
 }
