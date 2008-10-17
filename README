@@ -1,0 +1,6 @@
+Dependencies:
+
+boost unit test framework
+google logging framework (glog)
+google flags (gflags)
+libtool

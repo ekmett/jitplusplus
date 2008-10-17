@@ -300,7 +300,12 @@ test/t_main.o test/t_main.o: test/t_main.cpp \
   /usr/include/c++/4.2/bits/vector.tcc \
   /usr/local/include/boost-1_36/boost/test/framework.hpp \
   /usr/include/c++/4.2/stdexcept \
-  /usr/local/include/boost-1_36/boost/config/auto_link.hpp
+  /usr/local/include/boost-1_36/boost/config/auto_link.hpp jitney.h \
+  jitney/options.h jitney/interpreter.h jitney/tracer.h \
+  /usr/include/ucontext.h /usr/include/sys/ucontext.h \
+  /usr/include/bits/signum.h /usr/include/bits/siginfo.h \
+  /usr/include/bits/sigaction.h /usr/include/bits/sigcontext.h \
+  /usr/include/bits/sigstack.h /usr/include/bits/sigthread.h
 
 /usr/local/include/boost-1_36/boost/test/unit_test.hpp:
 
@@ -999,3 +1004,27 @@ test/t_main.o test/t_main.o: test/t_main.cpp \
 /usr/include/c++/4.2/stdexcept:
 
 /usr/local/include/boost-1_36/boost/config/auto_link.hpp:
+
+jitney.h:
+
+jitney/options.h:
+
+jitney/interpreter.h:
+
+jitney/tracer.h:
+
+/usr/include/ucontext.h:
+
+/usr/include/sys/ucontext.h:
+
+/usr/include/bits/signum.h:
+
+/usr/include/bits/siginfo.h:
+
+/usr/include/bits/sigaction.h:
+
+/usr/include/bits/sigcontext.h:
+
+/usr/include/bits/sigstack.h:
+
+/usr/include/bits/sigthread.h:

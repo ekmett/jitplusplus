@@ -7,7 +7,7 @@ AC_SUBST(JITNEY_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved
 AC_COPYRIGHT([Copyright (c) 2008 Edward Kmett. All Rights Reserved.])
 
 AC_CONFIG_AUX_DIR([bin])
-AC_CONFIG_HEADER([jitney/config.hpp])
+AC_CONFIG_HEADER([jitney/config.h])
 AC_CONFIG_SRCDIR([.])
 
 # add include guards to make jitney/config.hpp idempotent
@@ -23,6 +23,7 @@ AC_CHECK_PROG([DARCS],[darcs],[/usr/bin/darcs])
 # use C++
 AC_LANG([C++])
 AC_PROG_CXX
+AC_PROG_LIBTOOL
 
 # check to see if we support gcc style attributes
 AX_C_HAVE_ATTRIBUTE
@@ -30,7 +31,6 @@ AX_C_HAVE_ATTRIBUTE
 # do we support the cold attribute added in 4.3?
 AX_C_HAVE_ATTRIBUTE_COLD
 
-AC_PROG_RANLIB
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
 # libraries:
@@ -46,6 +46,14 @@ AX_CXX_PTHREAD
 # udis86 used for disassembly on x86 and x86-64 for debug purposes
 AC_CHECK_HEADERS_ONCE(udis86.h)
 AX_UDIS86
+
+# google gflags used for all runtime system command line options
+AC_CHECK_HEADERS(gflags/gflags.h)
+AC_CHECK_LIB(gflags, main) # _ZN6google7GetArgvEv)
+
+# google logging framework
+AC_CHECK_HEADERS_ONCE(glog/logging.h)
+AC_CHECK_LIB(glog, ZN6google10LogMessage4FailEv)
 
 # tune to current architecture
 # AX_GCC_ARCHFLAG([no],[CPPFLAGS="$CPPFLAGS $ax_cv_gcc_archflag"])

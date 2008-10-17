@@ -1,7 +1,8 @@
-#include <jitney/branch.hpp>
 #define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
+
+#include <jitney/internal.h>
 
 BOOST_AUTO_TEST_CASE( likely_identity ) {
     using namespace jitney;

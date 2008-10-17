@@ -1,4 +1,5 @@
-/* jitney/config.hpp.in.  Generated from configure.ac by autoheader.  */
+/* jitney/config.h.  Generated from config.h.in by configure.  */
+/* jitney/config.h.in.  Generated from configure.ac by autoheader.  */
 
 #ifndef INCLUDED_JITNEY_CONFIG
 #define INCLUDED_JITNEY_CONFIG
@@ -30,88 +31,103 @@
 
 
 /* define if your compiler has __attribute__((cold)) */
-#undef HAVE_ATTRIBUTE_COLD
+/* #undef HAVE_ATTRIBUTE_COLD */
 
 /* define if the Boost library is available */
-#undef HAVE_BOOST
+#define HAVE_BOOST 
 
 /* define if the Boost::Unit_Test_Framework library is available */
-#undef HAVE_BOOST_UNIT_TEST_FRAMEWORK
+#define HAVE_BOOST_UNIT_TEST_FRAMEWORK 
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#define HAVE_DLFCN_H 1
+
+/* Define to 1 if you have the <gflags/gflags.h> header file. */
+#define HAVE_GFLAGS_GFLAGS_H 1
+
+/* Define to 1 if you have the <glog/logging.h> header file. */
+#define HAVE_GLOG_LOGGING_H 1
 
 /* Define to 1 if you have the <inttypes.h> header file. */
-#undef HAVE_INTTYPES_H
+#define HAVE_INTTYPES_H 1
+
+/* Define to 1 if you have the `gflags' library (-lgflags). */
+#define HAVE_LIBGFLAGS 1
+
+/* Define to 1 if you have the `glog' library (-lglog). */
+/* #undef HAVE_LIBGLOG */
 
 /* Define to 1 if you have the `udis86' library (-ludis86). */
-#undef HAVE_LIBUDIS86
+/* #undef HAVE_LIBUDIS86 */
 
 /* Define to 1 if you have the <memory.h> header file. */
-#undef HAVE_MEMORY_H
+#define HAVE_MEMORY_H 1
 
 /* define if the compiler implements namespaces */
-#undef HAVE_NAMESPACES
+#define HAVE_NAMESPACES 1
 
 /* Define if you have POSIX threads libraries and header files. */
-#undef HAVE_PTHREAD
+#define HAVE_PTHREAD 1
 
 /* Define to 1 if you have the <pthread.h> header file. */
-#undef HAVE_PTHREAD_H
+#define HAVE_PTHREAD_H 1
 
 /* Define to 1 if you have the <stdint.h> header file. */
-#undef HAVE_STDINT_H
+#define HAVE_STDINT_H 1
 
 /* Define to 1 if you have the <stdlib.h> header file. */
-#undef HAVE_STDLIB_H
+#define HAVE_STDLIB_H 1
 
 /* Define to 1 if you have the <strings.h> header file. */
-#undef HAVE_STRINGS_H
+#define HAVE_STRINGS_H 1
 
 /* Define to 1 if you have the <string.h> header file. */
-#undef HAVE_STRING_H
+#define HAVE_STRING_H 1
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
-#undef HAVE_SYS_STAT_H
+#define HAVE_SYS_STAT_H 1
 
 /* Define to 1 if you have the <sys/types.h> header file. */
-#undef HAVE_SYS_TYPES_H
+#define HAVE_SYS_TYPES_H 1
 
 /* Define to 1 if you have the <udis86.h> header file. */
-#undef HAVE_UDIS86_H
+#define HAVE_UDIS86_H 1
 
 /* Define to 1 if you have the <unistd.h> header file. */
-#undef HAVE_UNISTD_H
+#define HAVE_UNISTD_H 1
 
 /* Name of package */
-#undef PACKAGE
+#define PACKAGE "jitney"
 
 /* Define to the address where bug reports for this package should be sent. */
-#undef PACKAGE_BUGREPORT
+#define PACKAGE_BUGREPORT "ekmett@gmail.com"
 
 /* Define to the full name of this package. */
-#undef PACKAGE_NAME
+#define PACKAGE_NAME "jitney"
 
 /* Define to the full name and version of this package. */
-#undef PACKAGE_STRING
+#define PACKAGE_STRING "jitney 0.0.1"
 
 /* Define to the one symbol short name of this package. */
-#undef PACKAGE_TARNAME
+#define PACKAGE_TARNAME "jitney"
 
 /* Define to the version of this package. */
-#undef PACKAGE_VERSION
+#define PACKAGE_VERSION "0.0.1"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
-#undef PTHREAD_CREATE_JOINABLE
+/* #undef PTHREAD_CREATE_JOINABLE */
 
 /* Define to 1 if you have the ANSI C header files. */
-#undef STDC_HEADERS
+#define STDC_HEADERS 1
 
 /* If the compiler supports a TLS storage class define it to that here */
-#undef TLS
+#define TLS __thread
 
 /* Version number of package */
-#undef VERSION
+#define VERSION "0.0.1"
 
 /* Define if using udis86 as a disassembler. */
-#undef WITH_UDIS86
+#define WITH_UDIS86 1
 
 #endif // INCLUDED_JITNEY_CONFIG

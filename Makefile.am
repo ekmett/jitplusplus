@@ -19,22 +19,22 @@ docdir = $(prefix)/share/doc/$(PACKAGE)-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
-#nobase_inst_HEADERS once i make an instdir
-nobase_noinst_HEADERS = jitney/interpreter.hpp jitney/memory.hpp jitney/tracer.hpp
+nobase_noinst_HEADERS = jitney/internal.h
+nobase_include_HEADERS = jitney.h jitney/config.h jitney/exception.h jitney/interpreter.h jitney/memory.h jitney/mutex.h jitney/options.h jitney/semantics.h jitney/tracer.h
 
 # build the runtime system
-lib_LIBRARIES = libjitney.a
-libjitney_a_SOURCES = jitney/interpreter.cpp jitney/memory.cpp jitney/tracer.cpp
-libjitney_a_LIBADD = $(LIBOBJS)
+lib_LTLIBRARIES = libjitney.la
+libjitney_la_SOURCES = jitney/exception.cc jitney/interpreter.cc jitney/memory.cc jitney/mutex.cc jitney/options.cc jitney/tracer.cc
+libjitney_la_LIBADD = $(LIBOBJS)
 
 # test suite
 noinst_PROGRAMS = tests
-tests_DEPENDENCIES = libjitney.a
+tests_DEPENDENCIES = libjitney.la
 tests_SOURCES = test/t_main.cpp test/t_branch.cpp
-tests_LDADD = libjitney.a \
+tests_LDADD = libjitney.la \
 	$(BOOST_UNIT_TEST_FRAMEWORK_LIB) \
 	$(PTHREAD_LIBS) \
-	$(LIB_OBJS)
+	$(LIB_OBJS) -lglog -ludis86
 
 # clear out caches
 maintainer-clean-local:

@@ -1,5 +1,10 @@
-test/t_branch.o test/t_branch.o: test/t_branch.cpp kata/branch.hpp \
-  kata/config.hpp /usr/local/include/boost-1_36/boost/config.hpp \
+test/t_branch.o test/t_branch.o: test/t_branch.cpp \
+  /usr/local/include/boost-1_36/boost/test/unit_test.hpp \
+  /usr/local/include/boost-1_36/boost/test/test_tools.hpp \
+  /usr/local/include/boost-1_36/boost/test/predicate_result.hpp \
+  /usr/local/include/boost-1_36/boost/test/utils/class_properties.hpp \
+  /usr/local/include/boost-1_36/boost/test/detail/config.hpp \
+  /usr/local/include/boost-1_36/boost/config.hpp \
   /usr/local/include/boost-1_36/boost/config/user.hpp \
   /usr/local/include/boost-1_36/boost/config/select_compiler_config.hpp \
   /usr/local/include/boost-1_36/boost/config/compiler/gcc.hpp \
@@ -33,11 +38,6 @@ test/t_branch.o test/t_branch.o: test/t_branch.cpp kata/branch.hpp \
   /usr/include/bits/environments.h /usr/include/bits/confname.h \
   /usr/include/getopt.h \
   /usr/local/include/boost-1_36/boost/config/suffix.hpp \
-  /usr/local/include/boost-1_36/boost/test/unit_test.hpp \
-  /usr/local/include/boost-1_36/boost/test/test_tools.hpp \
-  /usr/local/include/boost-1_36/boost/test/predicate_result.hpp \
-  /usr/local/include/boost-1_36/boost/test/utils/class_properties.hpp \
-  /usr/local/include/boost-1_36/boost/test/detail/config.hpp \
   /usr/local/include/boost-1_36/boost/detail/workaround.hpp \
   /usr/local/include/boost-1_36/boost/preprocessor/seq/for_each.hpp \
   /usr/local/include/boost-1_36/boost/preprocessor/arithmetic/dec.hpp \
@@ -300,11 +300,26 @@ test/t_branch.o test/t_branch.o: test/t_branch.cpp kata/branch.hpp \
   /usr/include/c++/4.2/bits/vector.tcc \
   /usr/local/include/boost-1_36/boost/test/framework.hpp \
   /usr/include/c++/4.2/stdexcept \
-  /usr/local/include/boost-1_36/boost/config/auto_link.hpp
+  /usr/local/include/boost-1_36/boost/config/auto_link.hpp \
+  jitney/internal.h jitney/config.h /usr/local/include/glog/logging.h \
+  /usr/include/errno.h /usr/include/bits/errno.h \
+  /usr/include/linux/errno.h /usr/include/asm/errno.h \
+  /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
+  /usr/include/c++/4.2/backward/strstream \
+  /usr/include/c++/4.2/backward/backward_warning.h \
+  /usr/include/inttypes.h /usr/local/include/gflags/gflags.h \
+  /usr/local/include/glog/log_severity.h \
+  /usr/local/include/glog/vlog_is_on.h
 
-kata/branch.hpp:
+/usr/local/include/boost-1_36/boost/test/unit_test.hpp:
 
-kata/config.hpp:
+/usr/local/include/boost-1_36/boost/test/test_tools.hpp:
+
+/usr/local/include/boost-1_36/boost/test/predicate_result.hpp:
+
+/usr/local/include/boost-1_36/boost/test/utils/class_properties.hpp:
+
+/usr/local/include/boost-1_36/boost/test/detail/config.hpp:
 
 /usr/local/include/boost-1_36/boost/config.hpp:
 
@@ -399,16 +414,6 @@ kata/config.hpp:
 /usr/include/getopt.h:
 
 /usr/local/include/boost-1_36/boost/config/suffix.hpp:
-
-/usr/local/include/boost-1_36/boost/test/unit_test.hpp:
-
-/usr/local/include/boost-1_36/boost/test/test_tools.hpp:
-
-/usr/local/include/boost-1_36/boost/test/predicate_result.hpp:
-
-/usr/local/include/boost-1_36/boost/test/utils/class_properties.hpp:
-
-/usr/local/include/boost-1_36/boost/test/detail/config.hpp:
 
 /usr/local/include/boost-1_36/boost/detail/workaround.hpp:
 
@@ -1003,3 +1008,33 @@ kata/config.hpp:
 /usr/include/c++/4.2/stdexcept:
 
 /usr/local/include/boost-1_36/boost/config/auto_link.hpp:
+
+jitney/internal.h:
+
+jitney/config.h:
+
+/usr/local/include/glog/logging.h:
+
+/usr/include/errno.h:
+
+/usr/include/bits/errno.h:
+
+/usr/include/linux/errno.h:
+
+/usr/include/asm/errno.h:
+
+/usr/include/asm-generic/errno.h:
+
+/usr/include/asm-generic/errno-base.h:
+
+/usr/include/c++/4.2/backward/strstream:
+
+/usr/include/c++/4.2/backward/backward_warning.h:
+
+/usr/include/inttypes.h:
+
+/usr/local/include/gflags/gflags.h:
+
+/usr/local/include/glog/log_severity.h:
+
+/usr/local/include/glog/vlog_is_on.h:
