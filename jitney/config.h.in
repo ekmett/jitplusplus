@@ -53,9 +53,6 @@
 /* Define to 1 if you have the `gflags' library (-lgflags). */
 #undef HAVE_LIBGFLAGS
 
-/* Define to 1 if you have the `glog' library (-lglog). */
-#undef HAVE_LIBGLOG
-
 /* Define to 1 if you have the `udis86' library (-ludis86). */
 #undef HAVE_LIBUDIS86
 

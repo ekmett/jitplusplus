@@ -30,11 +30,11 @@ libjitney_la_LIBADD = $(LIBOBJS)
 # test suite
 noinst_PROGRAMS = tests
 tests_DEPENDENCIES = libjitney.la
-tests_SOURCES = test/t_main.cpp test/t_branch.cpp
+tests_SOURCES = test/options.cc test/branch.cc test/exception.cc
 tests_LDADD = libjitney.la \
 	$(BOOST_UNIT_TEST_FRAMEWORK_LIB) \
 	$(PTHREAD_LIBS) \
-	$(LIB_OBJS) -lglog -ludis86
+	$(LIB_OBJS)
 
 # clear out caches
 maintainer-clean-local:

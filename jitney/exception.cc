@@ -15,7 +15,7 @@ namespace jitney {
 	ud_set_syntax(&ud,UD_SYN_ATT);
 	size_t bytes = ud_disassemble(&ud);
 	// we can also emit relevant register contents since this is mid trace
-	snprintf(m_what,max_length,"%16lx: %-32:32s %s\n", (uint64_t)ud_insn_off(&ud),ud_insn_hex(&ud),ud_insn_asm(&ud));
+	snprintf(m_what,max_length,"%018p: %-32.32s %s\n", (uint64_t)ud_insn_off(&ud),ud_insn_hex(&ud),ud_insn_asm(&ud));
 	m_what[max_length-1] = '\0';
 	return m_what;
     }

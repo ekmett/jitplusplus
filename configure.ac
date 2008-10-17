@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([jitney],[0.0.1],[ekmett@gmail.com])
+AC_INIT([jitney],[0.0.0],[ekmett@gmail.com])
 AC_SUBST(JITNEY_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
 AC_COPYRIGHT([Copyright (c) 2008 Edward Kmett. All Rights Reserved.])
 
@@ -51,9 +51,17 @@ AX_UDIS86
 AC_CHECK_HEADERS(gflags/gflags.h)
 AC_CHECK_LIB(gflags, main) # _ZN6google7GetArgvEv)
 
-# google logging framework
+
+# google logging framework, this must have pthreads included in the options to work
 AC_CHECK_HEADERS_ONCE(glog/logging.h)
-AC_CHECK_LIB(glog, ZN6google10LogMessage4FailEv)
+save_CPPFLAGS="$CPPFLAGS"
+CPPFLAGS="$CPPFLAGS $PTHREAD_CPPFLAGS"
+save_LIBS="$LIBS"
+LIBS="$PTHREAD_LIBS $LIBS"
+AC_CHECK_LIB(glog, _ZN6google10LogMessage4FailEv, [save_LIBS="$save_LIBS -lglog"],[AC_ERROR("Missing google glog.")])
+LIBS="$save_LIBS"
+CPPFLAGS="$save_CPPFLAGS"
+
 
 # tune to current architecture
 # AX_GCC_ARCHFLAG([no],[CPPFLAGS="$CPPFLAGS $ax_cv_gcc_archflag"])
