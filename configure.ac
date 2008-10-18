@@ -2,7 +2,15 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([jit++],[0.0.0],[ekmett@gmail.com])
+AC_INIT([jit++],[0.1],[ekmett@gmail.com])
+
+# libtool version into for libj++
+# bump first and third number when adding to the interfaces
+# bump first number and reset third when removing from the interfae
+# bump second number whenever the implementation changes
+AC_SUBST(VERSION_INFO,[2:1:1])
+
+
 AC_SUBST(JITPP_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
 AC_COPYRIGHT([Copyright (c) 2008 Edward Kmett. All Rights Reserved.])
 

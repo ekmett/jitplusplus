@@ -1,4 +1,4 @@
-jitney is a cooperative tracing jit that compiles x86-64 assembly into x86-64 assembly using user placed callsites as monitored hotspots.
+jit++ is a cooperative tracing jit written in c++ that compiles x86-64 assembly into x86-64 assembly using user placed callsites as monitored hotspots.
 
 (c) 2008 Edward Kmett
 All Rights Reserved

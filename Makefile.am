@@ -12,10 +12,10 @@ AM_LDFLAGS = $(BOOST_LDFLAGS) $(PTHREAD_CPPFLAGS) -L/usr/local/lib
 # scripts for maintainer use
 noinst_SCRIPTS=autogen.sh
 
-distdir=$(top_srcdir)/dist/$(PACKAGE)-$(VERSION)
+distdir=$(top_srcdir)/dist/jit++-$(VERSION)
 
 # install the documentation
-docdir = $(prefix)/share/doc/$(PACKAGE)-$(VERSION)
+docdir = $(prefix)/share/doc/jit++-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
@@ -26,6 +26,7 @@ nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpre
 lib_LTLIBRARIES = libjit++.la
 libjit___la_SOURCES = jit++/exception.cc jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/options.cc jit++/tracer.cc
 libjit___la_LIBADD = $(LIBOBJS)
+libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
 
 # test suite
 noinst_PROGRAMS = tests
