@@ -1,12 +1,12 @@
 
-#include <jitney/internal.h>
-#include <jitney/options.h>
+#include <jit++/internal.h>
+#include <jit++/options.h>
 
 namespace {
     bool initialized = false;
 }
 
-namespace jitney { 
+namespace jitpp { 
     options::options() {} 
     options::options(int & argc, char ** & argv, bool remove_flags) { 
 	init(argc,argv,remove_flags);

@@ -1,11 +1,11 @@
 # include the macros from the m4 folder automatically as needed
-REPOSITORY_HTTP = http://comonad.com/jitney/
-REPOSITORY_SSH = slipwave@comonad.com:/home/slipwave/info/jitney
+REPOSITORY_HTTP = http://comonad.com/jit++/
+REPOSITORY_SSH = slipwave@comonad.com:/home/slipwave/info/jit++
 
 # autoconf macros are in m4
 ACLOCAL_AMFLAGS = -I m4
 
-# we need to include the boost cpp flags and link flags
+# we need to include the boost c++ flags and link flags
 AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(PTHREAD_CPPFLAGS)
 AM_LDFLAGS = $(BOOST_LDFLAGS) $(PTHREAD_CPPFLAGS) -L/usr/local/lib
 
@@ -19,19 +19,19 @@ docdir = $(prefix)/share/doc/$(PACKAGE)-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
-nobase_noinst_HEADERS = jitney/internal.h
-nobase_include_HEADERS = jitney.h jitney/config.h jitney/exception.h jitney/interpreter.h jitney/memory.h jitney/mutex.h jitney/options.h jitney/semantics.h jitney/tracer.h
+nobase_noinst_HEADERS = jit++/internal.h
+nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/options.h jit++/semantics.h jit++/tracer.h
 
 # build the runtime system
-lib_LTLIBRARIES = libjitney.la
-libjitney_la_SOURCES = jitney/exception.cc jitney/interpreter.cc jitney/memory.cc jitney/mutex.cc jitney/options.cc jitney/tracer.cc
-libjitney_la_LIBADD = $(LIBOBJS)
+lib_LTLIBRARIES = libjit++.la
+libjit___la_SOURCES = jit++/exception.cc jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/options.cc jit++/tracer.cc
+libjit___la_LIBADD = $(LIBOBJS)
 
 # test suite
 noinst_PROGRAMS = tests
-tests_DEPENDENCIES = libjitney.la
+tests_DEPENDENCIES = libjit++.la
 tests_SOURCES = test/options.cc test/suite.cc
-tests_LDADD = libjitney.la \
+tests_LDADD = libjit++.la \
 	$(BOOST_UNIT_TEST_FRAMEWORK_LIB) \
 	$(PTHREAD_LIBS) \
 	$(LIB_OBJS)

@@ -1,10 +1,10 @@
-#ifndef INCLUDED_JITNEY_EXCEPTION_H
-#define INCLUDED_JITNEY_EXCEPTION_H
+#ifndef INCLUDED_JITPP_EXCEPTION_H
+#define INCLUDED_JITPP_EXCEPTION_H
 
 #include <sys/types.h> // size_t
 #include <exception>   // std::exception
 
-namespace jitney { 
+namespace jitpp { 
     class tracer_exception : public std::exception {
     public:
         virtual ~tracer_exception() throw() {}

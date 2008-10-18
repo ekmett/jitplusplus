@@ -1,11 +1,11 @@
-#ifndef INCLUDED_JITNEY_MUTEX_H
-#define INCLUDED_JITNEY_MUTEX_H
+#ifndef INCLUDED_JITPP_MUTEX_H
+#define INCLUDED_JITPP_MUTEX_H
 
 #include <pthread.h>	      // pthread_rwlock_t
 #include <algorithm>          // std::swap
-#include <jitney/semantics.h> // move
+#include <jit++/semantics.h> // move
 
-namespace jitney { 
+namespace jitpp { 
 
     class native_rw_mutex { 
     public: 
@@ -49,8 +49,8 @@ namespace jitney {
 
 namespace std { 
     template<> inline void swap(
-	jitney::native_rw_mutex::scoped_lock & a, 
-	jitney::native_rw_mutex::scoped_lock & b
+	jitpp::native_rw_mutex::scoped_lock & a, 
+	jitpp::native_rw_mutex::scoped_lock & b
     ) { 
 	swap(a.m_lock,b.m_lock);
     }

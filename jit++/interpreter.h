@@ -1,9 +1,9 @@
-#ifndef INCLUDED_JITNEY_INTERPRETER_H
-#define INCLUDED_JITNEY_INTERPRETER_H
+#ifndef INCLUDED_JITPP_INTERPRETER_H
+#define INCLUDED_JITPP_INTERPRETER_H
 
-#include <jitney/tracer.h>
+#include <jit++/tracer.h>
 
-namespace jitney { 
+namespace jitpp { 
     class interpreter : public tracer { 
     public:
 	interpreter() : tracer() {}

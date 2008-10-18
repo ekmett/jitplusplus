@@ -1,9 +1,9 @@
 #include <ucontext.h> 
-#include <jitney/internal.h>
-#include <jitney/interpreter.h>
-#include <jitney/exception.h>
+#include <jit++/internal.h>
+#include <jit++/interpreter.h>
+#include <jit++/exception.h>
 
-namespace jitney { 
+namespace jitpp { 
 
 static const uint8_t rex_w_mask = 8;
 static const uint8_t rex_r_mask = 4;

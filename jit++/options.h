@@ -1,7 +1,7 @@
-#ifndef INCLUDED_JITNEY_OPTIONS_H
-#define INCLUDED_JITNEY_OPTIONS_H
+#ifndef INCLUDED_JITPP_OPTIONS_H
+#define INCLUDED_JITPP_OPTIONS_H
 
-namespace jitney {
+namespace jitpp {
     class options { 
     public:
 	options();

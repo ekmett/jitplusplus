@@ -2,15 +2,15 @@
 #include <asm/prctl.h>        // SYS_arch_prctl
 #include <sys/syscall.h>      // syscall
 
-#include <jitney/tracer.h>    // tracer::*
-#include <jitney/exception.h> // unsupported_opcode_exception
-#include <jitney/internal.h>  // LOG
+#include <jit++/tracer.h>    // tracer::*
+#include <jit++/exception.h> // unsupported_opcode_exception
+#include <jit++/internal.h>  // LOG
 
-DEFINE_uint64(jitney_default_stack_size,102400,"the default stack size for tracing fibers. must be larger than the size of /proc/self/maps!");
+DEFINE_uint64(jitpp_default_stack_size,102400,"the default stack size for tracing fibers. must be larger than the size of /proc/self/maps!");
 
-namespace jitney { 
+namespace jitpp { 
     size_t tracer::default_stack_size() { 
-	return FLAGS_jitney_default_stack_size; 
+	return FLAGS_jitpp_default_stack_size; 
     }
 
     tracer::tracer(size_t stack_size) {
@@ -88,4 +88,4 @@ namespace jitney {
 	setcontext(&f->m_context); 
 	// resume execution at our new location
     }
-} // namespace jitney
+} // namespace jitpp

@@ -1,7 +1,7 @@
-#include <jitney/exception.h>
+#include <jit++/exception.h>
 #include <udis86.h>
 
-namespace jitney { 
+namespace jitpp { 
     unsupported_opcode_exception::unsupported_opcode_exception(const void * rip) throw() : m_rip(rip) { 
 	m_what[0] = '\0'; 
     } 
@@ -19,4 +19,4 @@ namespace jitney {
 	m_what[max_length-1] = '\0';
 	return m_what;
     }
-} // namespace jitney
+} // namespace jitpp

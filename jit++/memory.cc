@@ -5,10 +5,10 @@
 #include <algorithm> // std::lower_bound, std::max
 #include <functional> // std::less<>
 
-#include <jitney/internal.h>
-#include <jitney/memory.h> // *memory*
+#include <jit++/internal.h>
+#include <jit++/memory.h> // *memory*
 
-using namespace jitney;
+using namespace jitpp;
 
 // file reading stuff
 namespace {
@@ -73,7 +73,7 @@ namespace {
 }
 
 
-namespace jitney {
+namespace jitpp {
     native_memory_permission_model::native_memory_permission_model() : m_mutex() {} 
     native_memory_permission_model::~native_memory_permission_model() {}
     native_memory_permission_model::range * native_memory_permission_model::find_entry(const void * p) { 
@@ -163,4 +163,4 @@ namespace jitney {
     native_memory_permission_model & native_memory_permission_model::instance() { 
 	return g_native_model;
     }
-} // namespace jitney
+} // namespace jitpp

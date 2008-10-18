@@ -1,12 +1,12 @@
-#ifndef INCLUDED_JITNEY_TRACER_H
-#define INCLUDED_JITNEY_TRACER_H
+#ifndef INCLUDED_JITPP_TRACER_H
+#define INCLUDED_JITPP_TRACER_H
 
 #include <sys/types.h>
 #include <stdint.h> // int64_t, etc
 #include <exception>
 #include <ucontext.h>
 
-namespace jitney { 
+namespace jitpp { 
     
     struct reg64 { 
 	union { 
@@ -93,6 +93,6 @@ namespace jitney {
         void * gs_base() const throw() { return m_gs_base; } 
     } __attribute__((aligned(16)));
     
-} // jitney
+} // jitpp
 
 #endif

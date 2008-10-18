@@ -1,15 +1,15 @@
-#ifndef INCLUDED_JITNEY_MEMORY_H
-#define INCLUDED_JITNEY_MEMORY_H
+#ifndef INCLUDED_JITPP_MEMORY_H
+#define INCLUDED_JITPP_MEMORY_H
 
 #include <vector>         // std::vector
-#include <jitney/mutex.h> // native_rw_mutex
+#include <jit++/mutex.h> // native_rw_mutex
 #include <pthread.h>      // pthread_rwlock_t
 // TODO: this has a number of internal details that can be pulled out and made into a class
 // we should template off of that rather than code against these methods directly
 // that would permit a bibop to enforce these constraints on more memory.
 // also could generational gc perhaps give a better approximation of 'const' member lookups?
 
-namespace jitney { 
+namespace jitpp { 
     typedef int memory_permissions;
 
     namespace memory_permission {
@@ -117,6 +117,6 @@ namespace jitney {
         virtual memory_permissions operator[](const void *);
         
     };
-} // namespace jitney
+} // namespace jitpp
 
 #endif

@@ -1,9 +1,9 @@
 #include <pthread.h>
-#include <jitney/semantics.h>
-#include <jitney/internal.h> // CHECK_*
-#include <jitney/mutex.h>
+#include <jit++/semantics.h>
+#include <jit++/internal.h> // CHECK_*
+#include <jit++/mutex.h>
 
-namespace jitney { 
+namespace jitpp { 
 
     native_rw_mutex::native_rw_mutex() { 
 	pthread_rwlock_init(&m_self,0); 
@@ -54,4 +54,4 @@ namespace jitney {
 	m_lock = 0;
     }
   
-} // namespace jitney
+} // namespace jitpp

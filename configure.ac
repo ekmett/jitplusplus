@@ -2,19 +2,19 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([jitney],[0.0.0],[ekmett@gmail.com])
-AC_SUBST(JITNEY_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
+AC_INIT([jit++],[0.0.0],[ekmett@gmail.com])
+AC_SUBST(JITPP_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
 AC_COPYRIGHT([Copyright (c) 2008 Edward Kmett. All Rights Reserved.])
 
 AC_CONFIG_AUX_DIR([bin])
-AC_CONFIG_HEADER([jitney/config.h])
+AC_CONFIG_HEADER([jit++/config.h])
 AC_CONFIG_SRCDIR([.])
 
-# add include guards to make jitney/config.hpp idempotent
-AH_TOP([#ifndef INCLUDED_JITNEY_CONFIG
-#define INCLUDED_JITNEY_CONFIG
+# add include guards to make jit++/config.hpp idempotent
+AH_TOP([#ifndef INCLUDED_JITPP_CONFIG
+#define INCLUDED_JITPP_CONFIG
 // #include <boost/config.hpp>])
-AH_BOTTOM([#endif // INCLUDED_JITNEY_CONFIG])
+AH_BOTTOM([#endif // INCLUDED_JITPP_CONFIG])
 
 # find darcs version control system (autogenerates ChangeLog)
 AC_ARG_VAR([DARCS],[darcs executable])
