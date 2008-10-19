@@ -10,6 +10,9 @@
 DEFINE_uint64(jitpp_default_stack_size,102400,"the default stack size for tracing fibers. must be larger than the size of /proc/self/maps!");
 
 namespace jitpp { 
+    const char * reg_name[16] = { 
+	"rAX","rCX","rDX","rBX","rSP","rBP","rSI","rDI","r8","r9","r10","r11","r12","r13","r14","r15"
+    };
     size_t tracer::default_stack_size() { 
 	return FLAGS_jitpp_default_stack_size; 
     }

@@ -44,7 +44,7 @@ namespace jitpp {
     static const int reg_rbp = 5;
     static const int reg_rsi = 6;
     static const int reg_rdi = 7;
-    static const char * reg_name[16];
+    extern const char * reg_name[16];
     
     // a tracer pauses the current fiber and moves execution to a new fiber with the original fiber's context
     // prepped in registers for interpretation or other manipulation

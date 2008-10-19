@@ -53,6 +53,10 @@ struct size64 {
     typedef int64_t  signed_default64;
     typedef uint64_t unsigned_default64;
     static const int bits = 64;
+    static const char * reg_names[16];
+    static inline const char * reg_name(int r) throw() { 
+	return reg_names[r];
+    }
 };
 
 struct size32 { 
@@ -65,6 +69,10 @@ struct size32 {
     typedef int64_t  signed_default64;
     typedef uint64_t unsigned_default64;
     static const int bits = 32;
+    static const char * reg_names[16];
+    static inline const char * reg_name(int r) throw() { 
+	return reg_names[r];
+    }
 };
 
 struct size16 { 
@@ -77,6 +85,10 @@ struct size16 {
     typedef int16_t  signed_default64;
     typedef uint16_t unsigned_default64;
     static const int bits = 16;
+    static const char * reg_names[16];
+    static inline const char * reg_name(int r) throw() { 
+	return reg_names[r];
+    }
 };
 
 struct size8 { 
@@ -87,7 +99,18 @@ struct size8 {
     typedef int8_t  signed_max16;
     typedef uint8_t unsigned_max16;
     static const int bits = 8;
+    static const char * reg_names_rex[16];
+    static const char * reg_names_norex[8];
+    static inline const char * reg_name(int r, bool has_rex) throw() { 
+	return has_rex ? reg_names_rex[r] : reg_names_norex[r];
+    }
 };
+
+const char * size64::reg_names[16] = {"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8","r9","r10","r11","r12","r13","r14","r15"};
+const char * size32::reg_names[16] = {"eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"};
+const char * size16::reg_names[16] = {"ax","cx","dx","bx","sp","bp","si","di","r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"};
+const char * size8::reg_names_rex[16] = {"al","cl","dl","bl","spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"};
+const char * size8::reg_names_norex[8] = {"al","cl","dl","bl","ah","ch","dh","bh"};
 
 template <typename T> T fetch(uint8_t * & i) { 
     T result = *reinterpret_cast<T*>(i);
@@ -100,6 +123,8 @@ template <typename T> T fetch(uint8_t * & i) {
 void interpreter::run() { 
     try { 
         do { 
+ 	    unsupported_opcode_exception current_opcode((const void*)rip());
+	    std::cout << current_opcode.what();
             uint8_t * i = reinterpret_cast<uint8_t *>(rip());
             m_rex = 0;
             m_segment_base = 0;
@@ -107,9 +132,9 @@ void interpreter::run() {
         refetch:
             // legacy, rex, escape, opcode, modrm, sib, displacement, immediate 
             m_opcode = fetch<uint8_t>(i);
+	    VLOG(1) << "m_opcode = " << std::hex << (int)m_opcode;
         
             // any legacy prefix replaces rex prefix.
-            m_rex = 0; 
         
             switch (m_opcode) {
             case 0x0f:
@@ -119,41 +144,41 @@ void interpreter::run() {
         
             case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47:    
             case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // rex    
-                m_rex = m_opcode & 0xf;
+                m_rex |= m_opcode & 0x0f;
                 goto refetch;
             case 0x64: // fs
+                m_rex &= 0xf0; 
                 m_segment_base = fs_base();
                 goto refetch;
             case 0x65: // gs
+                m_rex &= 0xf0; 
                 m_segment_base = gs_base();
                 goto refetch;
             case 0x66: // os 66h
+                m_rex &= 0xf0; 
                 m_rex |= prefix_66h_mask;
                 goto refetch;
             case 0x67: // as 67h
+                m_rex &= 0xf0; 
                 m_rex |= prefix_67h_mask;
                 goto refetch;
             case 0xf0: // lock
+                m_rex &= 0xf0; 
                 m_rex |= lock_mask;
                 goto refetch;
             default: 
                 break;
             }
-            if (m_rex & prefix_67h_mask == 0) { 
-                if (m_rex & rex_w_mask != 0) 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size64>(i));
-                else if (m_rex & prefix_66h_mask == 0) 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size32,size64>(i));
-                else 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size64>(i));
-            } else { 
-                if (m_rex & rex_w_mask != 0) 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size32>(i));
-                else if (m_rex & prefix_66h_mask == 0) 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size32,size32>(i));
-                else 
-		    rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size32>(i));
-            }
+	    switch ((m_rex & 0x38) >> 3) { 
+	    case 0x0: rip() = reinterpret_cast<int64_t>(interpret_opcode<size32,size64>(i)); break; // 
+	    case 0x2: rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size64>(i)); break; // 66
+	    case 0x4: rip() = reinterpret_cast<int64_t>(interpret_opcode<size32,size32>(i)); break; // 67
+	    case 0x6: rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size32>(i)); break; // 67 66
+	    case 0x1: // fall through                                                                    // rex
+	    case 0x3: rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size64>(i)); break; // (66 ignored) rex
+	    case 0x5: // fall through								         // 67 rex
+	    case 0x7: rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size32>(i)); break; // 67 (66 ignored) rex
+	    }
         } while (true);
     } catch (unsupported_opcode_exception & e) { 
         std::cout << e.what();
@@ -164,51 +189,92 @@ void interpreter::run() {
 template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint8_t * i) { 
     typedef int8_t b;
     typedef int8_t w;
+    typedef typename as::signed_type asv;
     typedef typename os::signed_type v;
     typedef typename os::signed_max32 z32;
     typedef typename os::signed_max16 z16;
     typedef typename os::signed_default64 d64;
 
+    VLOG(1) << "os " << os::bits << " as " << as::bits;
+
     uint8_t modrm_flags = modrm_flag_lut[m_opcode];
+    VLOG(1) << "modrm flags " << std::hex << (int)modrm_flags;
     if (modrm_flags & modrm_flag_has_modrm != 0) { 
         LOG(INFO) << "parsing mod r/m";
-	m_extra = modrm_flags & modrm_flag_extra_byte != 0 ? fetch<uint8_t>(i) : 0;
+	
+	m_extra = (modrm_flags & modrm_flag_extra_byte != 0) ? fetch<uint8_t>(i) : 0;
+        VLOG(1) << "extra " << std::hex << (int)m_extra;
 	m_modrm = fetch<uint8_t>(i);
 	m_mod = m_modrm >> 6;
 	m_nnn = ((m_modrm >> 3) & 7) | ((m_rex & 4) << 1);
 	m_rm = (m_modrm & 7) | ((m_rex & 1) << 3);
+	VLOG(1) << "modrm " << (int)m_modrm << " mod " << (int)m_mod << " nnn " << (int)m_nnn << " rm " << (int)m_rm;
 
 	if (m_mod != 3) { 
             if (m_rm & 7 == 4) { // sib needed
+		VLOG(1) << "SIB";
                 uint8_t sib = fetch<uint8_t>(i);
                 uint8_t scale = sib >> 6;
                 uint8_t index = ((sib >> 3) & 7) | ((m_rex & 2) << 2);
                 uint8_t base = (sib & 7) | ((m_rex & 1) << 3);
-                uint64_t rindex = index == 4 ? 0 : (m_reg[index] << scale);
-                uint64_t rbase = m_reg[base];
+                int64_t rindex = index == 4 ? 0 : (reg<asv>(index) << scale);
+	 	VLOG(1) << "index " << (index == 4 ? "(none)" : as::reg_name(index)) << " * scale " << scale << " = " << std::hex << rindex;
+                int64_t rbase = reg<v>(base);
+		VLOG(1) << "base reg " << os::reg_name(base);
                 if (base == 5) {
                     switch (m_mod) {
-                    case 0: rbase = fetch<int32_t>(i); break;
-                    case 1: rbase += fetch<int8_t>(i); break;
-                    case 2: rbase += fetch<int32_t>(i); break;
+                    case 0: 
+			VLOG(1) << "base = i";
+			rbase = fetch<int32_t>(i); break;
+                    case 1: 
+			VLOG(1) << "base = " << reg_name[base] << " + b";
+		        rbase += fetch<int8_t>(i); break;
+                    case 2: 
+			VLOG(1) << "base = " << reg_name[base] << " + i";
+			rbase += fetch<int32_t>(i); break;
                     }
                 }
                 m_M = m_segment_base + rindex + rbase;
             } else { // no sib
+		VLOG(1) << "no SIB";
                 switch (m_mod) { 
                 case 0: // rIP relative or [rXX]
-                    if (m_rm & 7 == 5) m_M = m_segment_base + (as::bits == 64 ? rip() : eip()) + fetch<int8_t>(i);
-                    else m_M = m_segment_base + reg<v>(m_rm);
+                    if (m_rm & 7 == 5) {
+			int8_t b = fetch<int8_t>(i);
+			if (as::bits == 64) { 
+			    m_M = m_segment_base + rip() + b;
+			    VLOG(1) << "[RIP + " << b << "b]";
+			} else { 
+			    VLOG(1) << "[EIP + " << b << "b]";
+			    m_M = m_segment_base + eip() + b;
+			}
+		    } else { 
+			VLOG(1) << "[" << as::reg_name(m_rm) << "]";
+                        m_M = m_segment_base + reg<asv>(m_rm);
+		    }
                     break;
                 case 1: // [rXX + int8]
-                    m_M = m_segment_base + reg<v>(m_rm) + fetch<int8_t>(i);
-                    break;
+		    {
+			int8_t b = fetch<int8_t>(i);
+		        VLOG(1) << "[" << as::reg_name(m_rm) << " + " << b << "b]";
+                        m_M = m_segment_base + reg<asv>(m_rm) + b;
+                        break;
+		    }
                 case 2: // [rXX + int32]
-                    m_M = m_segment_base + reg<v>(m_rm) + fetch<int32_t>(i);
-                    break;
+		    {
+			int32_t b = fetch<int32_t>(i);
+			VLOG(1) << "[" << as::reg_name(m_rm) << " + " << i << "i]";
+                        m_M = m_segment_base + reg<asv>(m_rm) + fetch<int32_t>(i);
+                        break;
+		    }
                 } 
             }
-        }
+	    // m_M &= (1LL << 47) - 1;
+	    LOG(INFO) << "m_M = " << std::hex << m_M;
+	    LOG(INFO) << "rsp = " << std::hex << rsp();
+        } else { 
+	    LOG(INFO) << "reg operands";
+	}
         LOG(INFO) << "mod r/m + sib parsed";
     }
 
@@ -257,7 +323,7 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
 	LOG(INFO) << "MOV Gb,Eb";
         G<b>(E<b>()); 
         return i;
-    case 0x8b: // Mov Gv,Ev
+    case 0x8b: // MOV Gv,Ev
 	LOG(INFO) << "MOV Gv,Ev ";
         G<v>(E<v>()); 
         return i;
