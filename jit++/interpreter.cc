@@ -162,8 +162,16 @@ void interpreter::run() {
 
 // assumes: m_rex and m_opcode have been initialized appropriately based on the prefix
 template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint8_t * i) { 
+    typedef int8_t b;
+    typedef int8_t w;
+    typedef typename os::signed_type v;
+    typedef typename os::signed_max32 z32;
+    typedef typename os::signed_max16 z16;
+    typedef typename os::signed_default64 d64;
+
     uint8_t modrm_flags = modrm_flag_lut[m_opcode];
     if (modrm_flags & modrm_flag_has_modrm != 0) { 
+        LOG(INFO) << "parsing mod r/m";
 	m_extra = modrm_flags & modrm_flag_extra_byte != 0 ? fetch<uint8_t>(i) : 0;
 	m_modrm = fetch<uint8_t>(i);
 	m_mod = m_modrm >> 6;
@@ -171,48 +179,39 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
 	m_rm = (m_modrm & 7) | ((m_rex & 1) << 3);
 
 	if (m_mod != 3) { 
-	    if (as::bits == 64) {
-                if (m_rm & 7 == 4) { // sib needed
-                    uint8_t sib = fetch<uint8_t>(i);
-                    uint8_t scale = sib >> 6;
-                    uint8_t index = ((sib >> 3) & 7) | ((m_rex & 2) << 2);
-                    uint8_t base = (sib & 7) | ((m_rex & 1) << 3);
-                    uint64_t rindex = index == 4 ? 0 : (m_reg[index] << scale);
-                    uint64_t rbase = m_reg[base];
-                    if (base == 5) {
-                        switch (m_mod) {
-                        case 0: rbase = fetch<int32_t>(i); break;
-                        case 1: rbase += fetch<int8_t>(i); break;
-                        case 2: rbase += fetch<int32_t>(i); break;
-                        }
+            if (m_rm & 7 == 4) { // sib needed
+                uint8_t sib = fetch<uint8_t>(i);
+                uint8_t scale = sib >> 6;
+                uint8_t index = ((sib >> 3) & 7) | ((m_rex & 2) << 2);
+                uint8_t base = (sib & 7) | ((m_rex & 1) << 3);
+                uint64_t rindex = index == 4 ? 0 : (m_reg[index] << scale);
+                uint64_t rbase = m_reg[base];
+                if (base == 5) {
+                    switch (m_mod) {
+                    case 0: rbase = fetch<int32_t>(i); break;
+                    case 1: rbase += fetch<int8_t>(i); break;
+                    case 2: rbase += fetch<int32_t>(i); break;
                     }
-                    m_M = m_segment_base + rindex + rbase;
-                } else { // no sib
-                    switch (m_mod) { 
-                    case 0: // rip relative or [rXX]
-                        if (m_rm & 7 == 5) m_M = m_segment_base + rip() + fetch<int8_t>(i);
-                        else m_M = m_segment_base + m_reg[m_rm];
-                        break;
-                    case 1: 
-			// [rXX + int8]
-                        m_M = m_segment_base + m_reg[m_rm] + fetch<int8_t>(i);
-                        break;
-                    case 2: 
-			// [rXX + int32]
-                        m_M = m_segment_base + m_reg[m_rm] + fetch<int32_t>(i);
-                        break;
-                    } 
                 }
-	    } else die(); // mod != 3, as::bits != 64 unsupported
+                m_M = m_segment_base + rindex + rbase;
+            } else { // no sib
+                switch (m_mod) { 
+                case 0: // rIP relative or [rXX]
+                    if (m_rm & 7 == 5) m_M = m_segment_base + (as::bits == 64 ? rip() : eip()) + fetch<int8_t>(i);
+                    else m_M = m_segment_base + reg<v>(m_rm);
+                    break;
+                case 1: // [rXX + int8]
+                    m_M = m_segment_base + reg<v>(m_rm) + fetch<int8_t>(i);
+                    break;
+                case 2: // [rXX + int32]
+                    m_M = m_segment_base + reg<v>(m_rm) + fetch<int32_t>(i);
+                    break;
+                } 
+            }
         }
+        LOG(INFO) << "mod r/m + sib parsed";
     }
 
-    typedef int8_t b;
-    typedef int8_t w;
-    typedef typename os::signed_type v;
-    typedef typename os::signed_max32 z32;
-    typedef typename os::signed_max16 z16;
-    typedef typename os::signed_default64 d64;
 
     if (m_rex & lock_mask != 0) die(); // lock unimplemented
 
@@ -247,15 +246,19 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     case 0x62: illegal(); // BOUND Gv,Ma
     case 0x82: illegal(); // group #1 Eb, Ib
     case 0x88: // MOV Eb,Gb
+	LOG(INFO) << "MOV Eb,Gb";
         E<b>(G<b>());
         return i;
     case 0x89: // MOV Ev,Gv
+	LOG(INFO) << "MOV Ev,Gv";
         E<v>(G<v>()); 
         return i;
     case 0x8a: // MOV Gb,Eb
+	LOG(INFO) << "MOV Gb,Eb";
         G<b>(E<b>()); 
         return i;
     case 0x8b: // Mov Gv,Ev
+	LOG(INFO) << "MOV Gv,Ev ";
         G<v>(E<v>()); 
         return i;
     case 0x8c: 

@@ -86,6 +86,7 @@ namespace jitpp {
         // the instruction pointer
         int64_t & rip() throw() { return m_context.uc_mcontext.gregs[REG_RIP]; }
         int64_t rip() const throw() { return m_context.uc_mcontext.gregs[REG_RIP]; }
+        int32_t eip() const throw() { return *reinterpret_cast<const int32_t*>(m_context.uc_mcontext.gregs + REG_RIP); }
 
         // the instruction pointer
         int64_t & rsp() throw() { return m_context.uc_mcontext.gregs[REG_RSP]; }
