@@ -65,5 +65,5 @@ pull-http:
 record: 
 	darcs record
 
-test: test_interpreter test_suite
+tests: test_interpreter test_suite
 	./test_interpreter -logtostderr -v 1

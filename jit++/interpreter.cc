@@ -26,19 +26,17 @@ static const int64_t df_mask = 0x0400;
 #define FLAGGED_BINOP(binop,size,arg) \
     inline void binop##size (env * env, arg * x, arg * y) { \
         asm ( \
-	    "push %6\n\t" \
+	    "push %4\n\t" \
 	    "popf\n\t" \
 	    "mov (%3), %%eax\n\t" \
-	    "##binop##l## %%eax, (%4)\n\t" \
+	    "##binop##l## %%eax, (%1)\n\t" \
 	    "pushf\n\t" \
-	    "popq %2\n\t" \
+	    "popq %0\n\t" \
 	    : "=g"(env->flags), "=+g"(*x) \
 	    : "r"(*y), "0"(env->flags), "1"(*x) \
 	    : "cc" \
 	) \
     }
-
-// FLAGGED_BINOP(add,l,int32_t)
 
 #define die() throw unsupported_opcode_exception((const void*)rip())
 #define illegal() throw unsupported_opcode_exception((const void*)rip())
@@ -174,9 +172,9 @@ void interpreter::run() {
 	    case 0x2: rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size64>(i)); break; // 66
 	    case 0x4: rip() = reinterpret_cast<int64_t>(interpret_opcode<size32,size32>(i)); break; // 67
 	    case 0x6: rip() = reinterpret_cast<int64_t>(interpret_opcode<size16,size32>(i)); break; // 67 66
-	    case 0x1: // fall through                                                                    // rex
+	    case 0x1: // fall through                                                               // rex
 	    case 0x3: rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size64>(i)); break; // (66 ignored) rex
-	    case 0x5: // fall through								         // 67 rex
+	    case 0x5: // fall through								    // 67 rex
 	    case 0x7: rip() = reinterpret_cast<int64_t>(interpret_opcode<size64,size32>(i)); break; // 67 (66 ignored) rex
 	    }
         } while (true);
@@ -201,9 +199,10 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     VLOG(1) << "modrm flags " << std::hex << (int)modrm_flags;
     if (modrm_flags & modrm_flag_has_modrm != 0) { 
         LOG(INFO) << "parsing mod r/m";
-	
-	m_extra = (modrm_flags & modrm_flag_extra_byte != 0) ? fetch<uint8_t>(i) : 0;
-        VLOG(1) << "extra " << std::hex << (int)m_extra;
+	if (modrm_flags & 2 == 2) { 
+	    m_extra = fetch<uint8_t>(i);
+            VLOG(1) << "extra " << std::hex << (int)m_extra;
+	}
 	m_modrm = fetch<uint8_t>(i);
 	m_mod = m_modrm >> 6;
 	m_nnn = ((m_modrm >> 3) & 7) | ((m_rex & 4) << 1);
@@ -224,14 +223,21 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
                 if (base == 5) {
                     switch (m_mod) {
                     case 0: 
-			VLOG(1) << "base = i";
 			rbase = fetch<int32_t>(i); break;
+			VLOG(1) << "base = " << std::hex << rbase;
                     case 1: 
-			VLOG(1) << "base = " << reg_name[base] << " + b";
-		        rbase += fetch<int8_t>(i); break;
+			{
+			    int8_t b = fetch<int8_t>(i);
+			    VLOG(1) << "base = " << os::reg_name(base) << " + " << std::hex << (int)b << "b";
+		            rbase += fetch<int8_t>(i); break;
+			}
                     case 2: 
-			VLOG(1) << "base = " << reg_name[base] << " + i";
-			rbase += fetch<int32_t>(i); break;
+			{
+			    int32_t d = fetch<int32_t>(i);
+			    VLOG(1) << "base = " << os::reg_name(base) << " + " << std::hex << (int)d << "i";
+			    rbase += d;
+			    break;
+			}
                     }
                 }
                 m_M = m_segment_base + rindex + rbase;
@@ -269,7 +275,6 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
 		    }
                 } 
             }
-	    // m_M &= (1LL << 47) - 1;
 	    LOG(INFO) << "m_M = " << std::hex << m_M;
 	    LOG(INFO) << "rsp = " << std::hex << rsp();
         } else { 
@@ -333,7 +338,7 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
         // else M<w>() = 0;         // MOV Mw,Sw
 	// return i;
     case 0x8d: // LEA Gv,M
-	G<v>(m_M);
+	G<v>(m_M - m_segment_base);
 	return i;
     case 0x8e: 
 	die();
@@ -371,13 +376,13 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     case 0xf9: // STC
 	rflags() |= cf_mask; return i;
     case 0xfa: // CLI
-	asm("cli"); rflags() &= ~if_mask; return i;
+	die(); // asm("cli"); rflags() &= ~if_mask; return i;
     case 0xfb: // STI
-	asm("sti"); rflags() |= if_mask; return i;
+	die(); // asm("sti"); rflags() |= if_mask; return i;
     case 0xfc: // CLD
 	rflags() &= ~df_mask; return i;
     case 0xfd: // STD
-	rflags() &= ~df_mask; return i;
+	rflags() |= df_mask; return i;
     case 0xff: // opcode group 5
 	switch (m_nnn) { 
 	case 6: push<d64>(E<d64>()); return i; // PUSH Ev

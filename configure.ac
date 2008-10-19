@@ -33,6 +33,8 @@ AC_LANG([C++])
 AC_PROG_CXX
 AC_PROG_LIBTOOL
 
+AC_CXX_COMPILE_STDCXX_0X
+
 # check to see if we support gcc style attributes
 AX_C_HAVE_ATTRIBUTE
 

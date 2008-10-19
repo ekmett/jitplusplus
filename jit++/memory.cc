@@ -54,14 +54,14 @@ namespace {
 	}
         range parse() { 
 	    range result;
-            while (isspace(*i)) ++i;
+            while (*i == ' ') ++i;
 	    char * endi;
             result.start = reinterpret_cast<const void *>(strtoul(i, &endi, 16)); 
 	    i = endi;
             ++i;
             result.end = reinterpret_cast<const void *>(strtoul(i, &endi, 16));
 	    i = endi;
-            while (isspace(*i)) ++i;
+            while (*i == ' ') ++i;
 	    result.flags = 0;
 	    if (i[0] == 'r') result.flags |= memory_permission::read;
 	    if (i[1] == 'w') result.flags |= memory_permission::write;
