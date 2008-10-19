@@ -10,7 +10,7 @@ AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(PTHREAD_CPPFLAGS)
 AM_LDFLAGS = $(BOOST_LDFLAGS) $(PTHREAD_CPPFLAGS) -L/usr/local/lib
 
 # scripts for maintainer use
-noinst_SCRIPTS=autogen.sh
+noinst_SCRIPTS=bin/autogen.sh
 
 distdir=$(top_srcdir)/dist/jit++-$(VERSION)
 
@@ -19,23 +19,23 @@ docdir = $(prefix)/share/doc/jit++-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
-nobase_noinst_HEADERS = jit++/internal.h
+nobase_noinst_HEADERS = jit++/internal.h jit++/opcodes.h
 nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/options.h jit++/semantics.h jit++/tracer.h
 
 # build the runtime system
 lib_LTLIBRARIES = libjit++.la
-libjit___la_SOURCES = jit++/exception.cc jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/options.cc jit++/tracer.cc
+libjit___la_SOURCES = jit++/exception.cc jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/opcodes.cc jit++/options.cc jit++/tracer.cc
 libjit___la_LIBADD = $(LIBOBJS)
 libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
 
 # test suite
-noinst_PROGRAMS = tests
-tests_DEPENDENCIES = libjit++.la
-tests_SOURCES = test/options.cc test/suite.cc
-tests_LDADD = libjit++.la \
-	$(BOOST_UNIT_TEST_FRAMEWORK_LIB) \
-	$(PTHREAD_LIBS) \
-	$(LIB_OBJS)
+noinst_PROGRAMS = test_suite test_interpreter
+test_suite_DEPENDENCIES = libjit++.la
+test_suite_SOURCES = test/options.cc test/t_suite.cc
+test_suite_LDADD = libjit++.la $(BOOST_UNIT_TEST_FRAMEWORK_LIB) $(PTHREAD_LIBS) $(LIB_OBJS)
+test_interpreter_DEPENDENCIES = libjit++.la
+test_interpreter_SOURCES = test/t_interpreter.cc
+test_interpreter_LDADD = libjit++.la $(PTHREAD_LIBS) $(LIB_OBJS)
 
 # clear out caches
 maintainer-clean-local:
@@ -43,10 +43,10 @@ maintainer-clean-local:
 
 # clean up after ourselves to the point where there is nothing left
 super-clean: maintainer-clean-local
-	rm -rf ./configure config.log config/config.h config.status Makefile Makefile.in ChangeLog libkata.a 
+	rm -rf ./configure config.log config/config.h config.status Makefile Makefile.in ChangeLog
 
 # darcs support
-EXTRA_DIST = _darcs autogen.sh
+EXTRA_DIST = _darcs bin/autogen.sh
 
 ChangeLog: _darcs
 	echo "Automatically generated from 'darcs changes' by 'make ChangeLog'" > ChangeLog
@@ -57,7 +57,13 @@ push:
 	darcs push -v -a $(REPOSITORY_SSH)
 
 pull:
+	darcs pull $(REPOSITORY_SSH)
+
+pull-http:
 	darcs pull $(REPOSITORY_HTTP)
 
 record: 
 	darcs record
+
+test: test_interpreter test_suite
+	./test_interpreter -logtostderr -v 1
