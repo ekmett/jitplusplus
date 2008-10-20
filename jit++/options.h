@@ -5,8 +5,8 @@ namespace jitpp {
     class options { 
     public:
 	options();
-        options(int & argv, char ** & argv, bool remove_flags = true);
-	void init(int & argv, char ** & argv, bool remove_flags = true);
+        options(int & argc, char ** & argv, bool remove_flags = true);
+	void init(int & argc, char ** & argv, bool remove_flags = true);
         ~options();
     };
 }
