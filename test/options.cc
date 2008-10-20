@@ -1,5 +1,5 @@
 
-#include <string>
+#include <string.h>
 
 #define BOOST_TEST_MODULE main
 #define BOOST_TEST_DYN_LINK
