@@ -120,9 +120,20 @@ template <typename T> T fetch(uint8_t * & i) {
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
 void interpreter::run() { 
     try { 
+	// todo: spew proc self maps here
         do { 
+	    VLOG(1) << "rax " << std::hex << reg<int64_t>(0);
+	    VLOG(1) << "rcx " << std::hex << reg<int64_t>(1);
+	    VLOG(1) << "rdx " << std::hex << reg<int64_t>(2);
+	    VLOG(1) << "rbx " << std::hex << reg<int64_t>(3);
+	    VLOG(1) << "rsp " << std::hex << reg<int64_t>(4);
+	    VLOG(1) << "rbp " << std::hex << reg<int64_t>(5);
+	    VLOG(1) << "rsi " << std::hex << reg<int64_t>(6);
+	    VLOG(1) << "rdi " << std::hex << reg<int64_t>(7);
+	    VLOG(1) << "rip " << std::hex << rip();
+	
  	    unsupported_opcode_exception current_opcode((const void*)rip());
-	    std::cout << current_opcode.what();
+	    LOG(INFO) << current_opcode.what();
             uint8_t * i = reinterpret_cast<uint8_t *>(rip());
             m_rex = 0;
             m_segment_base = 0;
@@ -199,7 +210,7 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     VLOG(1) << "modrm flags " << std::hex << (int)modrm_flags;
     if (modrm_flags & modrm_flag_has_modrm != 0) { 
         LOG(INFO) << "parsing mod r/m";
-	if (modrm_flags & 2 == 2) { 
+	if ((modrm_flags & 2) == 2) { 
 	    m_extra = fetch<uint8_t>(i);
             VLOG(1) << "extra " << std::hex << (int)m_extra;
 	}
@@ -245,13 +256,13 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
 		VLOG(1) << "no SIB";
                 switch (m_mod) { 
                 case 0: // rIP relative or [rXX]
-                    if (m_rm & 7 == 5) {
+                    if ((m_rm & 7) == 5) {
 			int8_t b = fetch<int8_t>(i);
 			if (as::bits == 64) { 
 			    m_M = m_segment_base + rip() + b;
-			    VLOG(1) << "[RIP + " << b << "b]";
+			    VLOG(1) << "[RIP + " << std::hex << (int)b << "b]" << std::hex << (int)b;
 			} else { 
-			    VLOG(1) << "[EIP + " << b << "b]";
+			    VLOG(1) << "[EIP + " << std::hex << (int)b << "b]" << std::hex << (int)b;
 			    m_M = m_segment_base + eip() + b;
 			}
 		    } else { 
@@ -262,15 +273,15 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
                 case 1: // [rXX + int8]
 		    {
 			int8_t b = fetch<int8_t>(i);
-		        VLOG(1) << "[" << as::reg_name(m_rm) << " + " << b << "b]";
+		        VLOG(1) << "[" << as::reg_name(m_rm) << " + " << (int)b << "b] " << std::hex << (int)b;
                         m_M = m_segment_base + reg<asv>(m_rm) + b;
                         break;
 		    }
                 case 2: // [rXX + int32]
 		    {
-			int32_t b = fetch<int32_t>(i);
-			VLOG(1) << "[" << as::reg_name(m_rm) << " + " << i << "i]";
-                        m_M = m_segment_base + reg<asv>(m_rm) + fetch<int32_t>(i);
+			int32_t d = fetch<int32_t>(i);
+			VLOG(1) << "[" << as::reg_name(m_rm) << " + " << (int)d << "i]" << std::hex << (int)d;
+                        m_M = m_segment_base + reg<asv>(m_rm) + d;
                         break;
 		    }
                 } 
@@ -284,7 +295,7 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     }
 
 
-    if (m_rex & lock_mask != 0) die(); // lock unimplemented
+    if ((m_rex & lock_mask) != 0) die(); // lock unimplemented
 
     switch (m_opcode) { 
     case 0x06: illegal(); // PUSH ES

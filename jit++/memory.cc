@@ -4,6 +4,7 @@
 
 #include <algorithm> // std::lower_bound, std::max
 #include <functional> // std::less<>
+#include <iostream>
 
 #include <jit++/internal.h>
 #include <jit++/memory.h> // *memory*
@@ -74,7 +75,10 @@ namespace {
 
 
 namespace jitpp {
-    native_memory_permission_model::native_memory_permission_model() : m_mutex() {} 
+    native_memory_permission_model::native_memory_permission_model() : m_mutex() {
+	// preemptive
+	rebuild();
+    } 
     native_memory_permission_model::~native_memory_permission_model() {}
     native_memory_permission_model::range * native_memory_permission_model::find_entry(const void * p) { 
         std::vector<range>::iterator i = std::lower_bound(
@@ -145,8 +149,8 @@ namespace jitpp {
         } while (file_size >= buf_size || file_size != old_file_size);
         buf[file_size] = '\0';
 
-        VLOG(1) << "read /proc/self/maps";
-	VLOG(2) << buf;
+        std::cout << "read /proc/self/maps";
+	std::cout << buf;
 
 	// now that we've read the file, parse the file.
 	linux_proc_self_maps_parser parser(buf);
