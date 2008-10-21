@@ -279,13 +279,13 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
                 switch (m_mod) { 
                 case 0: // rIP relative or [rXX]
                     if ((m_rm & 7) == 5) {
-			int8_t b = fetch<int8_t>(i);
+			int32_t d = fetch<int32_t>(i);
 			if (as::bits == 64) { 
-			    m_M = m_segment_base + rip() + b;
-			    VLOG(1) << "[RIP + " << std::hex << (int)b << "b]" << std::hex << (int)b;
+			    m_M = m_segment_base + rip() + d;
+			    VLOG(1) << "[RIP + " << std::hex << d << "b]" << std::hex << d;
 			} else { 
-			    VLOG(1) << "[EIP + " << std::hex << (int)b << "b]" << std::hex << (int)b;
-			    m_M = m_segment_base + eip() + b;
+			    VLOG(1) << "[EIP + " << std::hex << d << "b]" << std::hex << d;
+			    m_M = m_segment_base + eip() + d;
 			}
 		    } else { 
 			VLOG(1) << "[" << as::reg_name(m_rm) << "]";

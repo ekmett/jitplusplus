@@ -20,7 +20,7 @@ dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
 nobase_noinst_HEADERS = jit++/internal.h jit++/opcodes.h
-nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/options.h jit++/semantics.h jit++/tracer.h jit++/context.h
+nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/options.h jit++/semantics.h jit++/tracer.h
 
 # build the runtime system
 lib_LTLIBRARIES = libjit++.la

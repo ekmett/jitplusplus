@@ -53,7 +53,7 @@ _ZN5jitpp6tracer5startEv:
 
     /* swich to the new stack */
     movq STACK_OFFSET(%rdi), %rax
-    addq STACK_SIZE_OFFSET(%rdx), %rax
+    addq STACK_SIZE_OFFSET(%rdi), %rax
     movq %rax, %rsp
 
     /* callee retains 'this' for us in r15 */
