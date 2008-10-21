@@ -61,10 +61,11 @@ _ZN5jitpp6tracer5startEv:
     movq (%rdi), %r13 /* virtual run() */
     call *(%r13)
 
-    xorl %eax,%eax                 /* sign extension clears upper bits */
+    movq %ss, %rax
     pushq %rax 	                   /* target ss  = 0 */
     pushq REG_OFFSET_RSP(%r15)     /* target rsp */
     pushq REG_OFFSET_RFLAGS(%r15)  /* target rflags */
+    movq %cs, %rax
     pushq %rax                     /* target cs = 0 */
     pushq REG_OFFSET_RIP(%r15)     /* target rip */
     pushq REG_OFFSET_R15(%r15)     /* target r15 */
