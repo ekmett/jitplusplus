@@ -35,12 +35,13 @@ namespace jitpp {
 	return m_gs_base;
     }
 
-    void tracer::run_tracer(tracer & t) throw() {
+    void tracer::run_tracer(context & t_) throw() {
+	tracer & t = *static_cast<tracer *>(&t);
 	t.m_fs_base_known = t.m_gs_base_known = false;
 	t.run();
     }
 
     void tracer::start() throw() {
-	enter_interpreter(*this,m_stack,m_stack_size,reinterpret_cast<void(*)(context &)>(&run_tracer));
+	enter_interpreter(*this,m_stack,m_stack_size,&run_tracer);
     }
 } // namespace jitpp

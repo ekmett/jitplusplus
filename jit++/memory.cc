@@ -149,7 +149,6 @@ namespace jitpp {
         } while (file_size >= buf_size || file_size != old_file_size);
         buf[file_size] = '\0';
 
-        std::cout << "read /proc/self/maps";
 	std::cout << buf;
 
 	// now that we've read the file, parse the file.

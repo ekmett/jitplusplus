@@ -36,7 +36,7 @@ namespace jitpp {
 	virtual void run() throw() = 0;
 
     private:
-	static void run_tracer(tracer & t) throw();
+	static void run_tracer(context & t) throw();
 
 	tracer(const tracer & peer);
 	tracer & operator=(const tracer & peer);
