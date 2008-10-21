@@ -10,8 +10,8 @@ public:
         VLOG(3) << "running tracer";
     }
 };
-// #define TRACER mock_tracer 
-#define TRACER interpreter
+#define TRACER mock_tracer 
+// #define TRACER interpreter
 
 int main(int argc, char ** argv) { 
     jitpp::options(argc,argv);
