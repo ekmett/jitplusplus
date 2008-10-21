@@ -9,7 +9,7 @@ namespace jitpp {
         interpreter() : tracer() {}
         inline void operator ()() throw() { start(); } 
     private:
-        void run();
+        void run() throw();
 
         // interpret the tail end of an opcode after the first byte has been read.
         template <typename os, typename as> uint8_t * interpret_opcode(uint8_t * i);

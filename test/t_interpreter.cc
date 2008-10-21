@@ -6,7 +6,7 @@ using namespace jitpp;
 class mock_tracer : public tracer { 
 public:
     mock_tracer() : tracer() {}
-    void run() { 
+    void run() throw() { 
         VLOG(3) << "running tracer";
     }
 };

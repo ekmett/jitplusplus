@@ -8,7 +8,7 @@ AC_INIT([jit++],[0.1],[ekmett@gmail.com])
 # bump first and third number when adding to the interfaces
 # bump first number and reset third when removing from the interfae
 # bump second number whenever the implementation changes
-AC_SUBST(VERSION_INFO,[2:1:1])
+AC_SUBST(VERSION_INFO,[3:2:2])
 
 
 AC_SUBST(JITPP_COPYRIGHT,["Copyright (c) 2008 Edward Kmett. All Rights Reserved."])
@@ -31,6 +31,7 @@ AC_CHECK_PROG([DARCS],[darcs],[/usr/bin/darcs])
 # use C++
 AC_LANG([C++])
 AC_PROG_CXX
+AM_PROG_AS
 AC_PROG_LIBTOOL
 
 AC_CXX_COMPILE_STDCXX_0X
@@ -44,7 +45,7 @@ AX_C_HAVE_ATTRIBUTE_COLD
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
 # libraries:
-AX_BOOST_BASE([1.34])
+AX_BOOST_BASE([1.36])
 
 # used for the unit tests
 AX_BOOST_UNIT_TEST_FRAMEWORK

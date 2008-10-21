@@ -118,7 +118,7 @@ template <typename T> T fetch(uint8_t * & i) {
 
 // assumes x86-64 long mode 
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
-void interpreter::run() { 
+void interpreter::run() throw() { 
     try { 
 	// todo: spew proc self maps here
         do { 
