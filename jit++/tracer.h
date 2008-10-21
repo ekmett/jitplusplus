@@ -61,8 +61,11 @@ namespace jitpp {
 
         static size_t default_stack_size();
 
+	/* single threaded, non re-entrant! */
 	__attribute__((nothrow)) void start();
 
+    protected:
+	__attribute__((nothrow)) void stop();
     private:
 	// hide copy and assignment
 	tracer(const tracer & peer);

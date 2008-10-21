@@ -60,32 +60,40 @@ _ZN5jitpp6tracer5startEv:
     movq %rdi, %r15
     movq (%rdi), %r13 /* virtual run() */
     call *(%r13)
-    fxrstor FXREGS_OFFSET(%r15)
+    mov %r15, %rdi
+    /* fall through */
+
+    .globl _ZN5jitpp6tracer4stopEv
+    .type  _ZN5jitpp6tracer4stopEv, @function
+_ZN5jitpp6tracer4stopEv:    
+    fxrstor FXREGS_OFFSET(%rdi)
 
     movq %ss, %rax
     pushq %rax 	                   /* target ss */
-    pushq REG_OFFSET_RSP(%r15)     /* target rsp */
-    pushq REG_OFFSET_RFLAGS(%r15)  /* target rflags */
+    pushq REG_OFFSET_RSP(%rdi)     /* target rsp */
+    pushq REG_OFFSET_RFLAGS(%rdi)  /* target rflags */
     movq %cs, %rax
     pushq %rax                     /* target cs */
-    pushq REG_OFFSET_RIP(%r15)     /* target rip */
+    pushq REG_OFFSET_RIP(%rdi)     /* target rip */
 
-    movq REG_OFFSET_RAX(%r15), %rax
-    movq REG_OFFSET_RCX(%r15), %rcx
-    movq REG_OFFSET_RDX(%r15), %rdx
-    movq REG_OFFSET_RBX(%r15), %rbx
+    movq REG_OFFSET_RAX(%rdi), %rax
+    movq REG_OFFSET_RCX(%rdi), %rcx
+    movq REG_OFFSET_RDX(%rdi), %rdx
+    movq REG_OFFSET_RBX(%rdi), %rbx
     /* skip rsp */
-    movq REG_OFFSET_RBP(%r15), %rbp
-    movq REG_OFFSET_RSI(%r15), %rsi
-    movq REG_OFFSET_RDI(%r15), %rdi
-    movq REG_OFFSET_R8(%r15),  %r8
-    movq REG_OFFSET_R9(%r15),  %r9
-    movq REG_OFFSET_R10(%r15), %r10
-    movq REG_OFFSET_R11(%r15), %r11
-    movq REG_OFFSET_R12(%r15), %r12
-    movq REG_OFFSET_R13(%r15), %r13
-    movq REG_OFFSET_R14(%r15), %r14
-    movq REG_OFFSET_R15(%r15), %r15
+    movq REG_OFFSET_RBP(%rdi), %rbp
+    /* skip rdi */
+    movq REG_OFFSET_RSI(%rdi), %rsi
+    movq REG_OFFSET_R8(%rdi),  %r8
+    movq REG_OFFSET_R9(%rdi),  %r9
+    movq REG_OFFSET_R10(%rdi), %r10
+    movq REG_OFFSET_R11(%rdi), %r11
+    movq REG_OFFSET_R12(%rdi), %r12
+    movq REG_OFFSET_R13(%rdi), %r13
+    movq REG_OFFSET_R14(%rdi), %r14
+    movq REG_OFFSET_R15(%rdi), %r15
+
+    movq REG_OFFSET_RDI(%rdi), %rdi
     iretq
     /* cs:rip, ss:rsp, and rflags restored by iret */
 
