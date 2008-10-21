@@ -24,19 +24,19 @@ namespace jitpp {
 	tracer(size_t stack_size = default_stack_size());
 	~tracer();
 
-        static size_t default_stack_size() throw();
+        static size_t default_stack_size();
 
-	void start() throw();
+	void start();
 
     protected:
-	int64_t fs_base() const throw();
-	int64_t gs_base() const throw();
-	int32_t eip() const throw() { return static_cast<int32_t>(rip()); } 
+	int64_t fs_base() const;
+	int64_t gs_base() const;
+	int32_t eip() const { return static_cast<int32_t>(rip()); } 
 
-	virtual void run() throw() = 0;
+	virtual void run() = 0;
 
     private:
-	static void run_tracer(context & t) throw();
+	static void run_tracer(context & t);
 
 	tracer(const tracer & peer);
 	tracer & operator=(const tracer & peer);

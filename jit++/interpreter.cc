@@ -52,7 +52,7 @@ struct size64 {
     typedef uint64_t unsigned_default64;
     static const int bits = 64;
     static const char * reg_names[16];
-    static inline const char * reg_name(int r) throw() { 
+    static inline const char * reg_name(int r) { 
 	return reg_names[r];
     }
 };
@@ -68,7 +68,7 @@ struct size32 {
     typedef uint64_t unsigned_default64;
     static const int bits = 32;
     static const char * reg_names[16];
-    static inline const char * reg_name(int r) throw() { 
+    static inline const char * reg_name(int r) { 
 	return reg_names[r];
     }
 };
@@ -84,7 +84,7 @@ struct size16 {
     typedef uint16_t unsigned_default64;
     static const int bits = 16;
     static const char * reg_names[16];
-    static inline const char * reg_name(int r) throw() { 
+    static inline const char * reg_name(int r) { 
 	return reg_names[r];
     }
 };
@@ -99,7 +99,7 @@ struct size8 {
     static const int bits = 8;
     static const char * reg_names_rex[16];
     static const char * reg_names_norex[8];
-    static inline const char * reg_name(int r, bool has_rex) throw() { 
+    static inline const char * reg_name(int r, bool has_rex) { 
 	return has_rex ? reg_names_rex[r] : reg_names_norex[r];
     }
 };
@@ -118,7 +118,7 @@ template <typename T> T fetch(uint8_t * & i) {
 
 // assumes x86-64 long mode 
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
-void interpreter::run() throw() { 
+void interpreter::run() { 
     try { 
 	// todo: spew proc self maps here
         do { 

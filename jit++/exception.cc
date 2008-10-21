@@ -2,10 +2,10 @@
 #include <udis86.h>
 
 namespace jitpp { 
-    unsupported_opcode_exception::unsupported_opcode_exception(const void * rip) throw() : m_rip(rip) { 
+    unsupported_opcode_exception::unsupported_opcode_exception(const void * rip) : m_rip(rip) { 
 	m_what[0] = '\0'; 
     } 
-    const char * unsupported_opcode_exception::what() const throw() {
+    const char * unsupported_opcode_exception::what() const {
 	if (m_what[0] != '\0') return m_what;
 	ud_t ud;
 	ud_init(&ud);
