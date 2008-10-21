@@ -4,8 +4,13 @@
 #include <jit++/interpreter.h>
 #include <jit++/exception.h>
 #include <jit++/opcodes.h>
+#include <asm/prctl.h>        // SYS_arch_prctl
+#include <sys/syscall.h>      // syscall
+
 
 namespace jitpp { 
+
+
 
 static const uint8_t lock_mask = 64;
 static const uint8_t prefix_67h_mask = 32;
@@ -116,10 +121,27 @@ template <typename T> T fetch(uint8_t * & i) {
     return result;
 }
 
+int64_t interpreter::fs_base() const {
+    if (unlikely(!m_fs_base_known)) {
+        syscall(SYS_arch_prctl,ARCH_GET_FS,&m_fs_base);
+        m_fs_base_known = true;
+    }
+    return m_fs_base;
+}
+
+int64_t interpreter::gs_base() const {
+    if (unlikely(!m_gs_base_known)) {
+        syscall(SYS_arch_prctl,ARCH_GET_FS,&m_gs_base);
+        m_gs_base_known = true;
+    }
+    return m_gs_base;
+}
+
 // assumes x86-64 long mode 
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
 void interpreter::run() { 
     try { 
+	m_fs_base_known = m_gs_base_known = false;
 	// todo: spew proc self maps here
         do { 
 	    VLOG(1) << "rax " << std::hex << reg<int64_t>(0);

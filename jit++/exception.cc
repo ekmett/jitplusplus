@@ -5,7 +5,7 @@ namespace jitpp {
     unsupported_opcode_exception::unsupported_opcode_exception(const void * rip) : m_rip(rip) { 
 	m_what[0] = '\0'; 
     } 
-    const char * unsupported_opcode_exception::what() const {
+    const char * unsupported_opcode_exception::what() const throw() {
 	if (m_what[0] != '\0') return m_what;
 	ud_t ud;
 	ud_init(&ud);

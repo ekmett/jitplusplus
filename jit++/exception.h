@@ -7,8 +7,8 @@
 namespace jitpp { 
     class tracer_exception : public std::exception {
     public:
-        virtual ~tracer_exception() {}
-        virtual const char * what() const = 0;
+        virtual ~tracer_exception() throw() {}
+        virtual const char * what() const throw() = 0;
     };
 
     // what() displays the exception
@@ -16,7 +16,7 @@ namespace jitpp {
     public:
         unsupported_opcode_exception(const void * rip);
         static const size_t max_length = 160;
-        const char * what() const;
+        const char * what() const throw();
     private:
         const void * m_rip;
         mutable char m_what[max_length];

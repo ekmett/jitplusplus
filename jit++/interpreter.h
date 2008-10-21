@@ -11,6 +11,39 @@ namespace jitpp {
     private:
         void run();
 
+    private:
+        // we defer the syscall for these until they are used.
+        mutable int64_t m_fs_base;
+        mutable int64_t m_gs_base;
+
+        mutable bool m_fs_base_known;
+        mutable bool m_gs_base_known;
+
+        // these are for the interpreter, not the code being traced!
+    protected:
+        int64_t fs_base() const;
+        int64_t gs_base() const;
+
+        int32_t eip() const { return static_cast<int32_t>(rip()); }
+
+        inline int64_t rip () const { return m_rip; }
+        inline int64_t & rip() { return m_rip; }
+
+        inline int64_t rflags() const { return m_rflags; }
+        inline int64_t & rflags() { return m_rflags; }
+
+        inline int64_t rsp () const { return m_reg[4]; }
+        inline int64_t & rsp() { return m_reg[4]; }
+
+        inline int64_t * regs() { return m_reg; }
+        inline const int64_t * regs() const { return m_reg; }
+
+        inline mmx_t * mmx() { return m_fx_mmx; }
+        inline const mmx_t * mmx() const { return m_fx_mmx; }
+
+        inline xmm_t * xmm() { return m_fx_xmm; }
+        inline const xmm_t * xmm() const { return m_fx_xmm; }
+
         // interpret the tail end of an opcode after the first byte has been read.
         template <typename os, typename as> uint8_t * interpret_opcode(uint8_t * i);
 
