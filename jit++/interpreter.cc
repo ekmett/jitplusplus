@@ -10,8 +10,6 @@
 
 namespace jitpp { 
 
-
-
 static const uint8_t lock_mask = 64;
 static const uint8_t prefix_67h_mask = 32;
 static const uint8_t prefix_66h_mask = 16;
@@ -27,21 +25,7 @@ static const int64_t sf_mask = 0x0080;
 static const int64_t tf_mask = 0x0100;
 static const int64_t if_mask = 0x0200;
 static const int64_t df_mask = 0x0400;
-
-#define FLAGGED_BINOP(binop,size,arg) \
-    inline void binop##size (env * env, arg * x, arg * y) { \
-        asm ( \
-	    "push %4\n\t" \
-	    "popf\n\t" \
-	    "mov (%3), %%eax\n\t" \
-	    "##binop##l## %%eax, (%1)\n\t" \
-	    "pushf\n\t" \
-	    "popq %0\n\t" \
-	    : "=g"(env->flags), "=+g"(*x) \
-	    : "r"(*y), "0"(env->flags), "1"(*x) \
-	    : "cc" \
-	) \
-    }
+static const int64_t of_mask = 0x0800;
 
 #define die() throw unsupported_opcode_exception((const void*)rip())
 #define illegal() throw unsupported_opcode_exception((const void*)rip())
@@ -142,7 +126,6 @@ int64_t interpreter::gs_base() const {
 void interpreter::run() { 
     try { 
 	m_fs_base_known = m_gs_base_known = false;
-	// todo: spew proc self maps here
         do { 
 	    VLOG(1) << "rax " << std::hex << reg<int64_t>(0);
 	    VLOG(1) << "rcx " << std::hex << reg<int64_t>(1);
@@ -212,6 +195,7 @@ void interpreter::run() {
 	    }
         } while (true);
     } catch (unsupported_opcode_exception & e) { 
+	std::cout << "Unsupported Opcode";
         std::cout << e.what();
     }
 }
@@ -227,6 +211,8 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     typedef typename os::signed_default64 d64;
 
     VLOG(1) << "os " << os::bits << " as " << as::bits;
+
+    //todo: defer actual calculation of memory address until opcode decoded.
 
     uint8_t modrm_flags = modrm_flag_lut[m_opcode];
     VLOG(1) << "modrm flags " << std::hex << (int)modrm_flags;
@@ -316,8 +302,11 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
         LOG(INFO) << "mod r/m + sib parsed";
     }
 
+    if ((m_rex & lock_mask) != 0) {
+	VLOG(1) << "locked";
+    	die(); // lock unimplemented
+    }
 
-    if ((m_rex & lock_mask) != 0) die(); // lock unimplemented
 
     switch (m_opcode) { 
     case 0x06: illegal(); // PUSH ES
@@ -433,27 +422,17 @@ template <typename os, typename as> uint8_t * interpreter::interpret_opcode(uint
     case 0x1a9: die(); // gs(pop<d64>()); return i;  // POP GS
     default: break;
     } 
+    VLOG(1) << "not found";
+    die();
 /*
     if (m_opcode & 0x1c0 == 0) { 
         // arithmetic opcode matrix
-        arithmetic_op op = arithops[opcode & 0x38 >> 4];
+        op = arithops[opcode & 0x38 >> 4];
 	switch (m_opcode & 7) { 
-	case 0: op.rebind<int8_t>(E<int8_t>,G<int8_t>,this,i); // XXX Eb,Gb
-	case 1: op.EvGv(this); // XXX Ev,Gv
-	case 2: op.GbEb(this); // XXX Gb,Eb
-	case 3: op.GvEv(this); // XXX Gv,Ev
-	case 4: op.AlIb(this); // XXX AL,Ib
-	case 5: op.rAXIz(this);// XXX rAX,Iz
-	    die();
-	default: 
-            // PUSH ES, PUSH SS, POP ES, POP SS, DAA, AAA, PUSH CS, PUSH DS, POP DS, DAS, AAS illegal
-            // 0F, ES, SS, CS, DS prefixes handled before entering interpret_opcode
-	    LOG(DFATAL) << "Logic error in tracer"; 
-	    die();
+	...
 	}
     }
 */   
-    die();
 } // interpreter::interpret
 
 } // namespace jitpp

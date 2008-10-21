@@ -37,30 +37,31 @@ _ZN5jitpp6tracer5startEv:
 
     /* stmxcsr (FXREGS_OFFSET + 24)(%rdi); fstcw FXREGS_OFFSET(%rdi); then clear the reserved bits? */
     fxsave FXREGS_OFFSET(%rdi)
-    
-    /* save off the stack pointer minus the overhead for this call */
-    leaq 8(%rsp), %rax
-    movq %rax, REG_OFFSET_RSP(%rdi)
 
     /* save instruction pointer that this call would return to */
     mov 0(%rsp), %rax
     movq %rax, REG_OFFSET_RIP(%rdi)
+    
+    /* save off the stack pointer minus the overhead for this call. */
+    leaq 8(%rsp), %rax
+    movq %rax, REG_OFFSET_RSP(%rdi)
 
-    /* save the rflags we were called with */
+    /* skip ahead on stack and save that location for guard . */
+    subq STACK_SIZE_OFFSET(%rdi), %rax
+    movq %rax, %rsp
+    movq %rax, STACK_OFFSET(%rdi);
+
+    /* save the rflags we were called with. TODO: store standard ABI form? */
     pushfq
     popq %rax
     movq %rax, REG_OFFSET_RFLAGS(%rdi)
-
-    /* swich to the new stack */
-    movq STACK_OFFSET(%rdi), %rax
-    addq STACK_SIZE_OFFSET(%rdi), %rax
-    movq %rax, %rsp
 
     /* callee retains 'this' for us in r15 */
     movq %rdi, %r15
     movq (%rdi), %r13 /* virtual run() */
     call *(%r13)
     mov %r15, %rdi
+/*  jmp _ZN5jitpp6tracer4stopEv */
     /* fall through */
 
     .globl _ZN5jitpp6tracer4stopEv
@@ -92,7 +93,6 @@ _ZN5jitpp6tracer4stopEv:
     movq REG_OFFSET_R13(%rdi), %r13
     movq REG_OFFSET_R14(%rdi), %r14
     movq REG_OFFSET_R15(%rdi), %r15
-
     movq REG_OFFSET_RDI(%rdi), %rdi
     iretq
     /* cs:rip, ss:rsp, and rflags restored by iret */
