@@ -60,15 +60,15 @@ _ZN5jitpp6tracer5startEv:
     movq %rdi, %r15
     movq (%rdi), %r13 /* virtual run() */
     call *(%r13)
+    fxrstor FXREGS_OFFSET(%r15)
 
     movq %ss, %rax
-    pushq %rax 	                   /* target ss  = 0 */
+    pushq %rax 	                   /* target ss */
     pushq REG_OFFSET_RSP(%r15)     /* target rsp */
     pushq REG_OFFSET_RFLAGS(%r15)  /* target rflags */
     movq %cs, %rax
-    pushq %rax                     /* target cs = 0 */
+    pushq %rax                     /* target cs */
     pushq REG_OFFSET_RIP(%r15)     /* target rip */
-    pushq REG_OFFSET_R15(%r15)     /* target r15 */
 
     movq REG_OFFSET_RAX(%r15), %rax
     movq REG_OFFSET_RCX(%r15), %rcx
@@ -85,10 +85,8 @@ _ZN5jitpp6tracer5startEv:
     movq REG_OFFSET_R12(%r15), %r12
     movq REG_OFFSET_R13(%r15), %r13
     movq REG_OFFSET_R14(%r15), %r14
-    /* skip r15 */
-    fxrstor FXREGS_OFFSET(%r15)
-    popq %r15
+    movq REG_OFFSET_R15(%r15), %r15
     iretq
-    /* all registers restored, rip, rsp, and rflags restored by iret */
+    /* cs:rip, ss:rsp, and rflags restored by iret */
 
 .section .note.GNU-stack,"",%progbits
