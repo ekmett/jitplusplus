@@ -26,14 +26,14 @@ namespace jitpp {
 
     // fixed structure used by tracer_start.S
     class tracer {
-    protected:
+    public:
 	// vtable 		    /* 0 */
 	virtual void run() = 0;     /* 0; 0 */
 
 	int64_t m_reserved_0;       /* 8 */
         int64_t m_reg[16];          /* 16 */
 	int64_t m_rip;              /* 144 */
-	int64_t m_rflags;           /* 152 */
+	mutable int64_t m_rflags;   /* 152 */
 	// fxsave format start
 	int16_t m_fx_fcw;           /* 160 */
 	int16_t m_fx_fsw;           

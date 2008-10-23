@@ -19,12 +19,12 @@ docdir = $(prefix)/share/doc/jit++-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
-nobase_noinst_HEADERS = jit++/internal.h jit++/opcodes.h
-nobase_include_HEADERS = jit++.h jit++/config.h jit++/exception.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/options.h jit++/semantics.h jit++/tracer.h
+nobase_noinst_HEADERS = jit++/internal.h
+nobase_include_HEADERS = jit++.h jit++/config.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/opcode.h jit++/options.h jit++/rflags.h jit++/semantics.h jit++/tracer.h
 
 # build the runtime system
 lib_LTLIBRARIES = libjit++.la
-libjit___la_SOURCES = jit++/exception.cc jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/opcodes.cc jit++/options.cc jit++/tracer.cc jit++/tracer_start.S
+libjit___la_SOURCES = jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/opcode.cc jit++/options.cc jit++/tracer.cc jit++/tracer_start.S
 libjit___la_LIBADD = $(LIBOBJS)
 libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
 
@@ -66,4 +66,4 @@ record:
 	darcs record
 
 tests: test_interpreter test_suite
-	./test_interpreter -logtostderr -v 1
+	./test_interpreter -logtostderr -v 3

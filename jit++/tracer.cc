@@ -10,11 +10,11 @@ namespace jitpp {
     }
 
     tracer::tracer(size_t stack_size) : m_stack_size(stack_size) {
-	m_stack = new uint8_t[stack_size];
+	// m_stack = new uint8_t[stack_size];
 	for (int i=0;i<16;++i) m_reg[i] = 0xbad;
     }
 
     tracer::~tracer() { 
-	delete[] m_stack;
+	// delete[] m_stack;
     }
 } // namespace jitpp
