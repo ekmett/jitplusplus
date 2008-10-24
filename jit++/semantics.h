@@ -5,7 +5,7 @@
 #include <tbb/tbb_stddef.h>
 #endif
 
-// TODO: if we have Intel's Thread Building Blocks, alias split to the split in tbb/tbb_stddef.h
+// if we have Intel's Thread Building Blocks, alias split to the split in tbb/tbb_stddef.h
 
 namespace jitpp { 
 

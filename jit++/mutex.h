@@ -5,7 +5,7 @@
 #include <algorithm>          // std::swap
 #include <jit++/semantics.h> // move
 
-namespace jitpp { 
+namespace jitpp {
 
     class native_rw_mutex { 
     public: 

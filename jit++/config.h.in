@@ -15,17 +15,19 @@
 # define __attribute__(x)
 #endif
 
-# define NORETURN __attribute__ ((noreturn))
-# define ALWAYS_INLINE __attribute__ ((always_inline)) inline
-# define UNUSED __attribute__ ((unused))
-# define ALIGNED(x) __attribute__ ((aligned(x))
+# define JITPP_NORETURN __attribute__ ((noreturn))
+# define JITPP_NOTHROW __attribute__ ((nothrow))
+# define JITPP_ALWAYS_INLINE __attribute__ ((always_inline)) inline
+# define JITPP_UNUSED __attribute__ ((unused))
+# define JITPP_PURE __attribute__ ((pure))
+# define JITPP_ALIGNED(x) __attribute__ ((aligned(x)))
 
 # ifdef HAVE_ATTRIBUTE_COLD
-#  define NORETURN_COLD __attribute__ ((noreturn,cold))
-#  define COLD __attribute__ ((cold))
+#  define JITPP_NORETURN_COLD __attribute__ ((noreturn,cold))
+#  define JITPP_COLD __attribute__ ((cold))
 # else 
-#  define NORETURN_COLD NORETURN
-#  define COLD
+#  define JITPP_NORETURN_COLD NORETURN
+#  define JITPP_COLD
 # endif
 
 

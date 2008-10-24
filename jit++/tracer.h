@@ -1,6 +1,7 @@
 #ifndef INCLUDED_JITPP_TRACER_H
 #define INCLUDED_JITPP_TRACER_H
 
+#include <jit++/config.h>
 #include <sys/types.h>
 #include <stdint.h>        // int64_t, etc
 
@@ -28,7 +29,8 @@ namespace jitpp {
     class tracer {
     public:
 	// vtable 		    /* 0 */
-	virtual void run() = 0;     /* 0; 0 */
+	virtual void stub();        /* 0; 0 */
+	virtual void run() = 0;     /* 0; 1 */
 
 	int64_t m_reserved_0;       /* 8 */
         int64_t m_reg[16];          /* 16 */
@@ -62,10 +64,10 @@ namespace jitpp {
         static size_t default_stack_size();
 
 	/* single threaded, non re-entrant! */
-	__attribute__((nothrow)) void start();
-
+	JITPP_NOTHROW void start();
     protected:
-	__attribute__((nothrow)) void stop();
+	JITPP_NOTHROW void stop();
+
     private:
 	// hide copy and assignment
 	tracer(const tracer & peer);

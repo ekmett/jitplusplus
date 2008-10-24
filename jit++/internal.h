@@ -12,14 +12,14 @@
 #endif
 
 namespace jitpp { 
-    ALWAYS_INLINE bool likely(bool x) {
+    JITPP_ALWAYS_INLINE bool likely(bool x) {
 #ifdef __GNUC__
 	return static_cast<bool>(__builtin_expect(static_cast<long>(x),1L));
 #else
 	return x;
 #endif
     }
-    ALWAYS_INLINE bool unlikely(bool x) { 
+    JITPP_ALWAYS_INLINE bool unlikely(bool x) { 
 #ifdef __GNUC__
 	return static_cast<bool>(__builtin_expect(static_cast<long>(x),0L));
 #else
