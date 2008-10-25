@@ -15,10 +15,8 @@ public:
 
 int main(int argc, char ** argv) { 
     jitpp::options(argc,argv);
-    VLOG(3) << "constructing tracer";
     TRACER t;
-    VLOG(3) << "starting tracer";
     t.start();
-    VLOG(3) << "interpreting";
+    VLOG(1) << "interpreting";
     return 0;
 }

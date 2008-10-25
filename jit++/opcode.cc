@@ -27,12 +27,12 @@ namespace jitpp {
         0x81, 0x82, 0x81, 0x81,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // 8x
 	0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x10, 0x10, 0x00, 0x00, // 9x
         0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00, // ax
-	0x01, 0x01, 0x01, 0x01,  0x01, 0x01, 0x01, 0x01,  0x02, 0x02, 0x02, 0x02,  0x02, 0x02, 0x02, 0x02, // bx
+	0x01, 0x01, 0x01, 0x01,  0x01, 0x01, 0x01, 0x01,  0x05, 0x05, 0x05, 0x05,  0x05, 0x05, 0x05, 0x05, // bx
 
-        0x80, 0x80, 0x10, 0x13,  0x00, 0x00, 0x81, 0x82,  0x14, 0x10, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00, // cx
+        0x80, 0x80, 0x10, 0x10,  0x00, 0x00, 0x81, 0x82,  0x14, 0x10, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00, // cx
 	0x80, 0x80, 0x80, 0x80,  0x00, 0x00, 0x00, 0x00,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // dx
         0x11, 0x11, 0x11, 0x11,  0x00, 0x00, 0x00, 0x00,  0x12, 0x12, 0x00, 0x11,  0x00, 0x00, 0x00, 0x00, // ex
-	0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x80, 0x80,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x80, 0x90, // fx
+	0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x86, 0x86,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x80, 0x90, // fx
 
         0x80, 0x80, 0x80, 0x80,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x80, 0x00, 0x80, // 0f 0x
 	0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // 0f 1x
@@ -44,7 +44,7 @@ namespace jitpp {
         0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // 0f 6x
 	0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x00,  0x00, 0x00, 0xc0, 0xc1,  0x80, 0x80, 0x80, 0x80, // 0f 7x
 
-        0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00, // 0f 8x
+        0x02, 0x02, 0x02, 0x02,  0x02, 0x02, 0x02, 0x02,  0x02, 0x02, 0x02, 0x02,  0x02, 0x02, 0x02, 0x02, // 0f 8x // JCC Jz
 	0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // 0f 9x
         0x00, 0x00, 0x00, 0x80,  0x80, 0x80, 0x00, 0x00,  0x00, 0x00, 0x00, 0x80,  0x80, 0x80, 0x80, 0x80, // 0f ax
 	0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80,  0x80, 0x80, 0x80, 0x80, // 0f bx
@@ -111,56 +111,45 @@ namespace jitpp {
 	    uint8_t modrm = fetch<uint8_t>(i);
 	    mod = modrm >> 6;
 	    reg = rex_r((modrm >> 3) & 7);
-	    rm  = rex_b(modrm & 7);
-	    VLOG(1) << "modrm = " << std::hex << (int)modrm << ", mod = " << (int)mod << ", reg = " << (int)reg << ", rm = " << (int)rm;
-	    if (mod == 3) 
-		disp = 0; // register only
-	    else if (rm & 7 == 4) { // sib required
+	    uint8_t base_or_rm = rm = rex_b(modrm & 7);
+	
+	    VLOG(1) << "modrm = " << std::hex << (int)modrm << ", mod = " << (int)mod << ", reg.r = " << (int)reg << ", rm.b = " << (int)rm;
+	    if ((mod != 3) && ((rm & 7) == 4)) {
 		// read sib
                 uint8_t sib = fetch<uint8_t>(i);
-	        VLOG(1) << "sib = " << std::hex << (int)modrm;
+	        VLOG(1) << "sib = " << std::hex << (int)sib;
 		parts |= part_sib;
 		// read drex if needed
-		if (unlikely(has_drex()))
-		    drex = fetch<uint8_t>(i);
 		// parse sib
                 log_scale = sib >> 6;
                 index = rex_x((sib >> 3) & 7);
-                base = rex_b(sib & 7);
-		// read sib displacement
-                if (base != 5) disp = 0;
-		else {
-		    parts |= part_disp;
-                    switch (mod) {
-                    case 0: disp = fetch<int32_t>(i); break;
-                    case 1: disp = fetch<int8_t>(i); break;
-                    case 2: disp = fetch<int32_t>(i); break;
-		    }
-		}
-            } else { // no sib
-		// read drex if needed
-		if (unlikely(has_drex()))
-		    drex = fetch<uint8_t>(i);
-		// read non-sib displacement
-                switch (mod) {
-                case 0:
-		    if ((rm & 7) == 5) {
-			disp = fetch<int32_t>(i);
-			parts |= part_disp;
-	            } else disp = 0;
-		    break;
-                case 1:
-		    parts |= part_disp;
-		    disp = fetch<int8_t>(i);
-		    break;
-                case 2:
-		    parts |= part_disp;
-		    disp = fetch<int32_t>(i);
-		    break;
-		}
-            }
-	    if (unlikely((parts & part_drex) != 0))
+                base_or_rm = base = rex_b(sib & 7);
+	        VLOG(1) << std::hex << "log_scale = " << (int)log_scale << ", index.x = " << (int)index << ", base.b = " << (int)base;
+	    }
+	    if (unlikely(has_drex())) { 
+		drex = fetch<uint8_t>(i);
 		VLOG(1) << "drex = " << std::hex << (int)drex;
+	    }
+	    // read displacement
+            switch (mod) {
+            case 0: 
+	 	if ((base_or_rm & 7) == 5) {
+		    disp = fetch<int32_t>(i);
+		    parts |= part_disp;
+		} else disp = 0; 
+		break;
+            case 1: 
+		disp = fetch<int8_t>(i); 
+		parts |= part_disp;
+		break;
+            case 2: 
+		disp = fetch<int32_t>(i); 
+		parts |= part_disp;
+		break;
+	    case 3:
+		disp = 0;
+		break;
+	    }
 	    if ((parts & part_disp) != 0)
 		VLOG(1) << "disp = " << std::hex << (int)disp;
 	}
@@ -178,13 +167,17 @@ namespace jitpp {
 	} else log_v = 2;
 
 	VLOG(1) << "immediate form = " << (int)(encoding_flags & encoding_immediate_mask);
+    retry_imm:
 	switch (encoding_flags & encoding_immediate_mask) {
+	case encoding_no_imm:
+	    imm = 0;
+	    break;
 	case encoding_Ib:
 	    imm = fetch<int8_t>(i);
 	    parts |= part_imm;
 	    break;
 	case encoding_Iz: 
-	    imm = fetch<int32_t>(i); 
+	    imm = (log_v == 1) ? fetch<int16_t>(i) : fetch<int32_t>(i);
 	    parts |= part_imm;
 	    break;
 	case encoding_Iw: 
@@ -203,11 +196,30 @@ namespace jitpp {
 	    case 3: imm = fetch<int64_t>(i); break;
 	    }
 	    break;
+	case encoding_hard:
+	    switch (code) { 
+	    case 0xf6: 
+		if ((reg & 6) == 0) {
+		    imm = fetch<int8_t>(i);
+	            parts |= part_imm;
+		} else imm = 0;
+		break;
+	    case 0xf7: 
+		if ((reg & 6) == 0) { 
+		    imm = (log_v == 1) ? fetch<int16_t>(i) : fetch<int32_t>(i); // Iz
+		    parts |= part_imm;
+		} else imm = 0;
+		break;
+	    default:
+		LOG(DFATAL) << "hard immediate without case. opcode: " << std::hex << (int)code;
+		code = 0x10b; // bail by invoking known bad opcode UD1 
+		imm = 0;
+		break;
+	    }
+	    break;
 	default: 
 	    LOG(DFATAL) << "unknown immediate encoding " << (int)(encoding_flags & encoding_immediate_mask);
-	    imm = 0;
-	    break;
-	case encoding_no_imm:
+	    code = 0x10b;
 	    imm = 0;
 	    break;
 	}

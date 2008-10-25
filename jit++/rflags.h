@@ -1,7 +1,10 @@
-#ifndef INCLUDED_JITPP_RFLAGS
-#define INCLUDED_JITPP_RFLAGS
+#ifndef INCLUDED_JITPP_RFLAGS_H
+#define INCLUDED_JITPP_RFLAGS_H
 
+#include <iostream>
+#include <iomanip>
 #include <jit++/tracer.h>
+#include <jit++/internal.h>
 
 namespace jitpp { 
 
@@ -47,7 +50,7 @@ namespace jitpp {
     public:
 	lazy_rflags_strategy_mixin() : m_rflags_handler(0), m_lazy_rflags(0) {}
     private:
-	rflags_handler * m_rflags_handler;
+	const rflags_handler * m_rflags_handler;
 	rflags_context m_rflags_context;
 
 	// this intentionally discards constness
@@ -58,6 +61,7 @@ namespace jitpp {
 	mutable int64_t m_lazy_rflags;
 
     public:
+	inline int64_t lazy_rflags() const { return m_lazy_rflags; } 
 	inline bool cf() const { 
 	    return is_lazy_rflag(rflags_cf_mask) 
 		? force_lazy_rflag(rflags_cf_mask,m_rflags_handler->cf(m_rflags_context)) 
@@ -117,17 +121,18 @@ namespace jitpp {
 
     public:
 	// set carry, parity, aux, zero, sign and overflow all at once, note, new_flag_handler must not go out of scope before rflags() is requested!
-	template <typename T> T set_rflags_context(rflags_handler & new_rflags_handler, T result, int64_t op1 = 0, int64_t op2 = 0) {
+	int64_t set_rflags_context(const rflags_handler & new_rflags_handler, int64_t result, int64_t op1 = 0, int64_t op2 = 0) {
 	     // force any flags that don't overlap with the new flag handler to evaluate
 	     m_lazy_rflags &= ~new_rflags_handler.lazy_rflags() & arith_lazy_rflags;
 	     rflags();
 	
 	     // install the new flag handler
 	     m_lazy_rflags = new_rflags_handler.lazy_rflags();
+	     VLOG(1) << "lazy rflags " << std::hex << m_lazy_rflags;
 	     m_rflags_handler = &new_rflags_handler;
-	     m_rflags_context.op1 = op1;
-	     m_rflags_context.op2 = op2;
-	     m_rflags_context.result = result;
+	     m_rflags_context.m_op1 = op1;
+	     m_rflags_context.m_op2 = op2;
+	     m_rflags_context.m_result = result;
 	     return result;
 	}
 	inline int64_t & rflags() { 
@@ -171,15 +176,15 @@ namespace jitpp {
 	    return value;
 	}
 
-	template <typename T> T set_rflags_context(rflags_handler & new_rflags_handler, T result, int64_t op1 = 0, int64_t op2 = 0) {
+	inline int64_t set_rflags_context(const rflags_handler & new_rflags_handler, int64_t result, int64_t op1 = 0, int64_t op2 = 0) {
 	    rflags_context ctx;
-	    ctx.op1(op1);
-	    ctx.op2(op2);
-	    ctx.result(result);
-	    int64_t handled_flags = new_flag_handler.lazy_rflags();
-	    if ((handled_flags & rflags_cf_mask) != 0) cf(new_flag_handler.cf(ctx));
-	    if ((handled_flags & rflags_af_mask) != 0) af(new_flag_handler.af(ctx));
-	    if ((handled_flags & rflags_of_mask) != 0) of(new_flag_handler.of(ctx));
+	    ctx.m_op1 = op1;
+	    ctx.m_op2 = op2;
+	    ctx.m_result = result;
+	    int64_t handled_flags = new_rflags_handler.lazy_rflags();
+	    if ((handled_flags & rflags_cf_mask) != 0) cf(new_rflags_handler.cf(ctx));
+	    if ((handled_flags & rflags_af_mask) != 0) af(new_rflags_handler.af(ctx));
+	    if ((handled_flags & rflags_of_mask) != 0) of(new_rflags_handler.of(ctx));
 	    if ((handled_flags & rflags_pf_mask) != 0) pf(rflags_calculate_parity(result));
 	    if ((handled_flags & rflags_zf_mask) != 0) zf(result == 0);
 	    if ((handled_flags & rflags_sf_mask) != 0) sf(result < 0);

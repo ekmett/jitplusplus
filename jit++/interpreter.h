@@ -4,6 +4,7 @@
 #include <jit++/opcode.h>
 #include <jit++/tracer.h>
 #include <jit++/rflags.h>
+#include <jit++/rflags_internal.h>
 
 namespace jitpp { 
 
@@ -63,6 +64,7 @@ namespace jitpp {
 	int64_t memory_operand_address(bool add_segment_base = true) const;
 
         template <typename T> interpreter_result::code interpret_opcode();
+        template <typename T> interpreter_result::code interpret_locked_opcode();
 
 	// fetch a given register. if T = int8_t then rex byte influences result.
         template <typename T> inline T reg(int r) const; 
@@ -89,6 +91,7 @@ namespace jitpp {
 
         template <typename T> void push(T v);
         template <typename T> T pop();
+
     };
 
     inline uint8_t & interpreter::ah() { return reinterpret_cast<uint8_t*>(m_reg)[1]; } 
@@ -142,8 +145,8 @@ namespace jitpp {
     }
 
     template <> inline int64_t interpreter::reg<>(int r) const { return m_reg[r]; }
-    template <> inline int32_t interpreter::reg<>(int r) const { return *reinterpret_cast<const int32_t*>(m_reg + r); }
-    template <> inline int16_t interpreter::reg<>(int r) const { return *reinterpret_cast<const int16_t*>(m_reg + r); }
+    template <> inline int32_t interpreter::reg<>(int r) const { return m_reg[r]; } 
+    template <> inline int16_t interpreter::reg<>(int r) const { return m_reg[r]; }
     template <> inline int8_t interpreter::reg<>(int r) const { 
         if (op.has_rex()) 
             return *reinterpret_cast<const int8_t*>(m_reg + r);

@@ -21,7 +21,7 @@ namespace {
     struct os64 { 
         typedef int64_t  v;
         typedef int32_t  z;
-        typedef int64_t  d64;
+        typedef int64_t  qv;
         static const int bits = 64;
         static inline const char * reg_name(int r) { return os64_reg_names[r]; }
     };
@@ -29,7 +29,7 @@ namespace {
     struct os32 { 
         typedef int32_t  v;
         typedef int32_t  z;
-        typedef int64_t  d64;
+        typedef int64_t  qv;
         static const int bits = 32;
         static inline const char * reg_name(int r) { return os32_reg_names[r]; }
     };
@@ -37,7 +37,7 @@ namespace {
     struct os16 { 
         typedef int16_t  v;
         typedef int16_t  z;
-        typedef int16_t  d64;
+        typedef int16_t  qv;
         static const int bits = 16;
         static inline const char * reg_name(int r) { return os16_reg_names[r]; }
     };
@@ -147,7 +147,13 @@ void interpreter::run() {
 	VLOG(2) << "rsi " << std::hex << reg<int64_t>(6);
 	VLOG(2) << "rdi " << std::hex << reg<int64_t>(7);
 	VLOG(2) << "rip " << std::hex << rip();
-	VLOG(2) << "rflags " << std::hex << rflags();
+	VLOG(2) << "rflags " << std::hex << lazy_rflags() << "/" << rflags()  
+		<< (cf() ? " CF" : "") 
+		<< (sf() ? " SF" : "")
+		<< (of() ? " OF" : "")
+		<< (pf() ? " PF" : "")
+		<< (af() ? " AF" : "")
+		<< (zf() ? " ZF" : "");
 	
         ud_set_input_buffer(&ud,reinterpret_cast<uint8_t*>(m_rip),15);
         ud_set_pc(&ud,rip());
@@ -165,12 +171,21 @@ void interpreter::run() {
 	    << "udis86 and jit++ disagree on opcode size! (udis86: " << bytes << " vs. jit++: " << (rip() - old_rip) << ")";
 
 	interpreter_result::code result;
-	switch (op.log_v) {
-	case 1: result = interpret_opcode<os16>(); break;
-	case 2: result = interpret_opcode<os32>(); break;
-	case 3: result = interpret_opcode<os64>(); break;
-	default: result = interpreter_result::logic_error; break;
-	}
+	if (op.has_lock_prefix()) { 
+	    switch (op.log_v) { 
+	    case 1: result = interpret_locked_opcode<os16>(); break;
+	    case 2: result = interpret_locked_opcode<os32>(); break;
+	    case 3: result = interpret_locked_opcode<os64>(); break;
+	    default: result = interpreter_result::logic_error; break;
+	    }
+	} else {
+	    switch (op.log_v) {
+	    case 1: result = interpret_opcode<os16>(); break;
+	    case 2: result = interpret_opcode<os32>(); break;
+	    case 3: result = interpret_opcode<os64>(); break;
+	    default: result = interpreter_result::logic_error; break;
+	    }
+ 	}
 
 	VLOG(2) << "result: " << interpreter_result::description[result] << " (" << (int)result << ")";
 	
@@ -182,49 +197,200 @@ void interpreter::run() {
     }
 }
 
-inline int64_t flagged_binop_cmp(int64_t & rflags, int64_t arg1, int64_t arg2) { 
-    __asm__(
-	"pushq %2\n\t"
-	"popfq\n\t"
-	"cmpq %3, %4\n\t"
-	"pushfq\n\t"
-	"popq %1\n\t"
-      : "=g"(arg2), "=g"(rflags)
-      : "g"(rflags), "q"(arg1), "0"(arg2)
-      : "cc", "%rax"
-    );
-}
+    template <typename T> inline void lock_inc(interpreter & i, T * ptr);
+    template <> inline void lock_inc<>(interpreter & i, int8_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; incb %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_inc<>(interpreter & i, int16_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; incw %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_inc<>(interpreter & i, int32_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; incl %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_inc<>(interpreter & i, int64_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; incq %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+ 
+
+    template <typename T> inline void lock_dec(interpreter & i, T * ptr);
+    template <> inline void lock_dec<>(interpreter & i, int8_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; decb %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_dec<>(interpreter & i, int16_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; decw %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_dec<>(interpreter & i, int32_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; decl %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+    template <> inline void lock_dec<>(interpreter & i, int64_t * ptr) { 
+	int8_t o,s,z,a,p;
+	__asm__ __volatile__(
+	    "lock; decq %0\n\tseto %b1\n\tsets %b2\n\tsetz %b3\n\tseta %b4\n\tsetp %b5\n\t"
+	    : "=m"(*ptr), "=qm"(o),"=qm"(s),"=qm"(z),"=qm"(a),"=qm"(p) : "m"(*ptr)
+	);
+	i.of(o != 0); i.sf(s != 0); i.zf(z != 0); i.af(z != 0); i.pf(p != 0);
+    }
+
+
+
+    template <typename T> inline T lock_cmpxchg(interpreter & i, T * p, T o, T n);
+
+    template <> inline int8_t lock_cmpxchg<>(interpreter & i, int8_t * p, int8_t o, int8_t n) {
+        int8_t r;
+        __asm__ __volatile__("lock; cmpxchgb %2,%1" : "=a"(r), "=m"(*p) : "q"(n), "m"(*p), "0"(o));
+        i.zf(r == o);
+        return r;
+    }
+    template <> inline int16_t lock_cmpxchg<>(interpreter & i, int16_t * p, int16_t o, int16_t n) {
+        int16_t r;
+        __asm__ __volatile__("lock; cmpxchgw %2,%1" : "=a"(r), "=m"(*p) : "q"(n), "m"(*p), "0"(o));
+        i.zf(r == o);
+        return r;
+    }
+    template <> inline int32_t lock_cmpxchg<>(interpreter & i, int32_t * p, int32_t o, int32_t n) {
+        int32_t r;
+        __asm__ __volatile__("lock; cmpxchgl %2,%1" : "=a"(r), "=m"(*p) : "q"(n), "m"(*p), "0"(o));
+        i.zf(r == o);
+        return r;
+    }
+    template <> inline int64_t lock_cmpxchg<>(interpreter & i, int64_t * p, int64_t o, int64_t n) {
+        int64_t r;
+        __asm__ __volatile__("lock; cmpxchgq %2,%1" : "=a"(r), "=m"(*p) : "q"(n), "m"(*p), "0"(o));
+        i.zf(r == o);
+        return r;
+    }
+
+    template <typename T> inline int64_t op_sbb(interpreter & i, int64_t x, int64_t y) {
+        if (i.cf()) return i.set_rflags_context(adc_rflags<T>::instance,x-y-1,x,y);
+        else return i.set_rflags_context(add_rflags<T>::instance,x-y,x,y);
+    }
+
+    template <typename T> inline int64_t op_adc(interpreter & i, int64_t x, int64_t y) {
+        if (i.cf()) return i.set_rflags_context(adc_rflags<T>::instance,x+y+1,x,y);
+        else return i.set_rflags_context(add_rflags<T>::instance,x+y,x,y);
+    }
+
+    template <typename T> inline int64_t op_add(interpreter & i, int64_t x, int64_t y) {
+        return i.set_rflags_context(add_rflags<T>::instance,x+y,x,y);
+    }
+
+    template <typename T> inline int64_t op_sub(interpreter & i, int64_t x, int64_t y) {
+        return i.set_rflags_context(sub_rflags<T>::instance,x-y,x,y);
+    }
+
+    template <typename T> inline int64_t op_and(interpreter & i, int64_t x, int64_t y) {
+        return i.set_rflags_context(logic_rflags<T>::instance,x&y);
+    }
+
+    template <typename T> inline int64_t op_or(interpreter & i, int64_t x, int64_t y) {
+        return i.set_rflags_context(logic_rflags<T>::instance,x|y);
+    }
+
+    template <typename T> inline int64_t op_xor(interpreter & i, int64_t x, int64_t y) {
+        return i.set_rflags_context(logic_rflags<T>::instance,x^y);
+    }
+
+    template <typename T> inline int64_t op_inc(interpreter & i, int64_t x) {
+        return i.set_rflags_context(inc_rflags<T>::instance,x+1);
+    }
+
+    template <typename T> inline int64_t op_dec(interpreter & i, int64_t x) {
+        return i.set_rflags_context(dec_rflags<T>::instance,x-1);
+    }
+
+    template <typename T> inline int64_t op_neg(interpreter & i, int64_t x) {
+        return i.set_rflags_context(neg_rflags<T>::instance,-x);
+    }
+
+#define ADD(T,x,y) op_add<T>(*this,(x),(y))
+#define SUB(T,x,y) op_sub<T>(*this,(x),(y))
+#define SBB(T,x,y) op_sbb<T>(*this,(x),(y))
+#define CMP(T,x,y) op_add<T>(*this,(x),(y))
+#define XOR(T,x,y) op_xor<T>(*this,(x),(y))
+#define AND(T,x,y) op_and<T>(*this,(x),(y))
+#define OR(T,x,y)  op_or<T>(*this,(x),(y))
+#define ADC(T,x,y) op_adc<T>(*this,(x),(y))
+#define INC(T,x) op_inc<T>(*this,(x))
+#define DEC(T,x) op_dec<T>(*this,(x))
+#define NEG(T,x) op_neg<T>(*this,(x))
 
 #define ok() return interpreter_result::ok	     // implemented
 #define die() return interpreter_result::unsupported // operation not supported yet (should implement)
 #define illegal() return interpreter_result::illegal // illegal byte sequence (can't implement)
 #define wont() return interpreter_result::wont_trace // not worth tracing (won't implement)
+#define impossible() return interpreter_result::logic_error
 
-template <typename T> T interpreter::rflagged_sbb<T>(T x, T y) {
-    if (cf()) return set_rflags_context(adc_handler<T>::instance,x,y,x-y-1);
-    else return set_rflags_context(add_handler<T>::instance,x,y,x-y);
-}
+template <typename os> interpreter_result::code interpreter::interpret_locked_opcode() { 
+    typedef int8_t b;
+    typedef int16_t w;
+    typedef typename os::v v;
+    typedef typename os::z z;
 
-template <typename T> T interpreter::rflagged_adc<T>(T x, T y) {
-    if (cf()) return set_rflags_context(adc_handler<T>::instance,x,y,x+y+1);
-    else return set_rflags_context(add_handler<T>::instance,x,y,x+y);
-}
+    if (op.mod == 3) 
+	illegal(); 
 
-template <typename T> T interpreter::rflagged_add<T>(T x, T y) {
-    return set_rflags_context(add_handler<T>::instance,x,y,x+y);
-}
+    int64_t addr = memory_operand_address();
+    v * vp = reinterpret_cast<v*>(addr); // aliases
+    b * bp = reinterpret_cast<b*>(addr);
+    w * wp = reinterpret_cast<w*>(addr);
+    z * zp = reinterpret_cast<z*>(addr);
 
-template <typename T> T interpreter::rflagged_sub<T>(T x, T y) {
-    return set_rflags_context(sub_handler<T>::instance,x,y,x-y);
-}
-template <typename T> T interpreter::rflagged_and<T>(T x, T y) {
-    return set_rflags_context(logic_handler<T>::instance,x,y,x&y);
-}
-template <typename T> T interpreter::rflagged_or<T>(T x, T y) {
-    return set_rflags_context(logic_handler<T>::instance,x,y,x|y);
-}
-template <typename T> T interpreter::rflagged_xor<T>(T x, T y) {
-    return set_rflags_context(logic_handler<T>::instance,x,y,x^y);
+    switch (op.code) { 
+    case 0x1b0: // LOCK CMPXCHG Mb,Gb
+	reg<b>(0,lock_cmpxchg<b>(*this,reinterpret_cast<b*>(memory_operand_address()), reg<b>(0), G<b>())); 
+	ok();
+    case 0x1b1: // LOCK CMPXCHG Mv,Gv
+	reg<v>(0,lock_cmpxchg<v>(*this,reinterpret_cast<v*>(memory_operand_address()), reg<v>(0), G<v>())); 
+	ok();
+    case 0xfe:
+	switch (op.reg) { 
+        case 0: lock_inc<b>(*this,bp); ok(); // LOCK INC Mb
+        case 1: lock_dec<b>(*this,bp); ok(); // LOCK DEC Mb
+	default: illegal();
+	}
+    case 0xff:
+	switch (op.reg) { 
+        case 0: lock_inc<v>(*this,vp); ok(); // LOCK INC Mv
+        case 1: lock_dec<v>(*this,vp); ok(); // LOCK DEC Mv
+	default: illegal();
+	}
+    default: die();
+    }
 }
 
 template <typename os> interpreter_result::code interpreter::interpret_opcode() { 
@@ -234,76 +400,80 @@ template <typename os> interpreter_result::code interpreter::interpret_opcode() 
     typedef typename os::z z;
 
     switch (op.code) { 
-    case 0x00: E<b>(rflagged_add<b>(E<b>(),G<b>())); ok();    // ADD Eb, Gb
-    case 0x01: E<v>(rflagged_add<v>(E<v>(),G<v>())); ok();    // ADD Ev, Gv
-    case 0x02: G<b>(rflagged_add<b>(G<b>(),E<b>())); ok();    // ADD Gb, Eb
-    case 0x03: G<v>(rflagged_add<v>(G<v>(),E<v>())); ok();    // ADD Gv, Ev
-    case 0x04: reg<b>(0)(rflagged_add<b>(reg<b>(0),op.imm)); ok(); // ADD AL, Ib
-    case 0x05: reg<v>(0)(rflagged_add<v>(reg<v>(0),op.imm)); ok(); // ADD rAX, Iz
+    case 0x00: E<b>(ADD(b,E<b>(),G<b>())); ok();    // ADD Eb, Gb
+    case 0x01: E<v>(ADD(b,E<v>(),G<v>())); ok();    // ADD Ev, Gv
+    case 0x02: G<b>(ADD(b,G<b>(),E<b>())); ok();    // ADD Gb, Eb
+    case 0x03: G<v>(ADD(v,G<v>(),E<v>())); ok();    // ADD Gv, Ev
+    case 0x04: reg<b>(0, ADD(b,reg<b>(0),op.imm)); ok(); // ADD AL, Ib
+    case 0x05: reg<v>(0, ADD(v,reg<v>(0),op.imm)); ok(); // ADD rAX, Iz
     case 0x06: illegal(); // PUSH ES
     case 0x07: illegal(); // POP ES
-    case 0x08: E<b>(rflagged_or<b>(E<b>(),G<b>())); ok();    // OR Eb, Gb
-    case 0x09: E<v>(rflagged_or<v>(E<v>(),G<v>())); ok();    // OR Ev, Gv
-    case 0x0a: G<b>(rflagged_or<b>(G<b>(),E<b>())); ok();    // OR Gb, Eb
-    case 0x0b: G<v>(rflagged_or<v>(G<v>(),E<v>())); ok();    // OR Gv, Ev
-    case 0x0c: reg<b>(0)(rflagged_or<b>(reg<b>(0),op.imm)); ok(); // OR AL, Ib
-    case 0x0d: reg<v>(0)(rflagged_or<v>(reg<v>(0),op.imm)); ok(); // OR rAX, Iz
+    case 0x08: E<b>(OR(b,E<b>(),G<b>())); ok();    // OR Eb, Gb
+    case 0x09: E<v>(OR(v,E<v>(),G<v>())); ok();    // OR Ev, Gv
+    case 0x0a: G<b>(OR(b,G<b>(),E<b>())); ok();    // OR Gb, Eb
+    case 0x0b: G<v>(OR(v,G<v>(),E<v>())); ok();    // OR Gv, Ev
+    case 0x0c: reg<b>(0, OR(b,reg<b>(0),op.imm)); ok(); // OR AL, Ib
+    case 0x0d: reg<v>(0, OR(v,reg<v>(0),op.imm)); ok(); // OR rAX, Iz
     case 0x0e: illegal(); // PUSH CS
     case 0x0f: die(); // 3DNow! 0F 0F prefixes not supported
-    case 0x10: E<b>(rflagged_adc<b>(E<b>(),G<b>())); ok();    // ADC Eb, Gb
-    case 0x11: E<v>(rflagged_adc<v>(E<v>(),G<v>())); ok();    // ADC Ev, Gv
-    case 0x12: G<b>(rflagged_adc<b>(G<b>(),E<b>())); ok();    // ADC Gb, Eb
-    case 0x13: G<v>(rflagged_adc<v>(G<v>(),E<v>())); ok();    // ADC Gv, Ev
-    case 0x14: reg<b>(0)(rflagged_adc<b>(reg<b>(0),op.imm)); ok(); // ADC AL, Ib
-    case 0x15: reg<v>(0)(rflagged_adc<v>(reg<v>(0),op.imm)); ok(); // ADC rAX, Iz
+    case 0x10: E<b>(ADC(b,E<b>(),G<b>())); ok();    // ADC Eb, Gb
+    case 0x11: E<v>(ADC(v,E<v>(),G<v>())); ok();    // ADC Ev, Gv
+    case 0x12: G<b>(ADC(b,G<b>(),E<b>())); ok();    // ADC Gb, Eb
+    case 0x13: G<v>(ADC(v,G<v>(),E<v>())); ok();    // ADC Gv, Ev
+    case 0x14: reg<b>(0, ADC(b,reg<b>(0),op.imm)); ok(); // ADC AL, Ib
+    case 0x15: reg<v>(0, ADC(v,reg<v>(0),op.imm)); ok(); // ADC rAX, Iz
     case 0x16: illegal(); // PUSH SS
     case 0x17: illegal(); // POP SS
-    case 0x18: E<b>(rflagged_sbb<b>(E<b>(),G<b>())); ok();    // SBB Eb, Gb
-    case 0x19: E<v>(rflagged_sbb<v>(E<v>(),G<v>())); ok();    // SBB Ev, Gv
-    case 0x1a: G<b>(rflagged_sbb<b>(G<b>(),E<b>())); ok();    // SBB Gb, Eb
-    case 0x1b: G<v>(rflagged_sbb<v>(G<v>(),E<v>())); ok();    // SBB Gv, Ev
-    case 0x1c: reg<b>(0)(rflagged_sbb<b>(reg<b>(0),op.imm)); ok(); // SBB AL, Ib
-    case 0x1d: reg<v>(0)(rflagged_sbb<v>(reg<v>(0),op.imm)); ok(); // SBB rAX, Iz
+    case 0x18: E<b>(SBB(b,E<b>(),G<b>())); ok();    // SBB Eb, Gb
+    case 0x19: E<v>(SBB(v,E<v>(),G<v>())); ok();    // SBB Ev, Gv
+    case 0x1a: G<b>(SBB(b,G<b>(),E<b>())); ok();    // SBB Gb, Eb
+    case 0x1b: G<v>(SBB(v,G<v>(),E<v>())); ok();    // SBB Gv, Ev
+    case 0x1c: reg<b>(0, SBB(b,reg<b>(0),op.imm)); ok(); // SBB AL, Ib
+    case 0x1d: reg<v>(0, SBB(v,reg<v>(0),op.imm)); ok(); // SBB rAX, Iz
     case 0x1e: illegal(); // PUSH DS
     case 0x1f: illegal(); // POP DS
-    case 0x20: E<b>(rflagged_and<b>(E<b>(),G<b>())); ok();    // AND Eb, Gb
-    case 0x21: E<v>(rflagged_and<v>(E<v>(),G<v>())); ok();    // AND Ev, Gv
-    case 0x22: G<b>(rflagged_and<b>(G<b>(),E<b>())); ok();    // AND Gb, Eb
-    case 0x23: G<v>(rflagged_and<v>(G<v>(),E<v>())); ok();    // AND Gv, Ev
-    case 0x24: reg<b>(0)(rflagged_and<b>(reg<b>(0),op.imm)); ok(); // AND AL, Ib
-    case 0x25: reg<v>(0)(rflagged_and<v>(reg<v>(0),op.imm)); ok(); // AND rAX, Iz
+    case 0x20: E<b>(AND(b,E<b>(),G<b>())); ok();    // AND Eb, Gb
+    case 0x21: E<v>(AND(v,E<v>(),G<v>())); ok();    // AND Ev, Gv
+    case 0x22: G<b>(AND(b,G<b>(),E<b>())); ok();    // AND Gb, Eb
+    case 0x23: G<v>(AND(v,G<v>(),E<v>())); ok();    // AND Gv, Ev
+    case 0x24: reg<b>(0, AND(b,reg<b>(0),op.imm)); ok(); // AND AL, Ib
+    case 0x25: reg<v>(0, AND(v,reg<v>(0),op.imm)); ok(); // AND rAX, Iz
     case 0x27: illegal(); // DAA
     case 0x26: impossible(); // ES: prefix
-    case 0x28: E<b>(rflagged_sub<b>(E<b>(),G<b>())); ok();    // SUB Eb, Gb
-    case 0x29: E<v>(rflagged_sub<v>(E<v>(),G<v>())); ok();    // SUB Ev, Gv
-    case 0x2a: G<b>(rflagged_sub<b>(G<b>(),E<b>())); ok();    // SUB Gb, Eb
-    case 0x2b: G<v>(rflagged_sub<v>(G<v>(),E<v>())); ok();    // SUB Gv, Ev
-    case 0x2c: reg<b>(0)(rflagged_sub<b>(reg<b>(0),op.imm)); ok(); // SUB AL, Ib
-    case 0x2d: reg<v>(0)(rflagged_sub<v>(reg<v>(0),op.imm)); ok(); // SUB rAX, Iz
+    case 0x28: E<b>(SUB(b,E<b>(),G<b>())); ok();    // SUB Eb, Gb
+    case 0x29: E<v>(SUB(v,E<v>(),G<v>())); ok();    // SUB Ev, Gv
+    case 0x2a: G<b>(SUB(b,G<b>(),E<b>())); ok();    // SUB Gb, Eb
+    case 0x2b: G<v>(SUB(v,G<v>(),E<v>())); ok();    // SUB Gv, Ev
+    case 0x2c: reg<b>(0,SUB(b,reg<b>(0),op.imm)); ok(); // SUB AL, Ib
+    case 0x2d: reg<v>(0,SUB(v,reg<v>(0),op.imm)); ok(); // SUB rAX, Iz
     case 0x2e: impossible(); // CS: prefix
     case 0x2f: illegal(); // DAS
-    case 0x30: E<b>(rflagged_xor<b>(E<b>(),G<b>())); ok();    // XOR Eb, Gb
-    case 0x31: E<v>(rflagged_xor<v>(E<v>(),G<v>())); ok();    // XOR Ev, Gv
-    case 0x32: G<b>(rflagged_xor<b>(G<b>(),E<b>())); ok();    // XOR Gb, Eb
-    case 0x33: G<v>(rflagged_xor<v>(G<v>(),E<v>())); ok();    // XOR Gv, Ev
-    case 0x34: reg<b>(0)(rflagged_xor<b>(reg<b>(0),op.imm)); ok(); // XOR AL, Ib
-    case 0x35: reg<v>(0)(rflagged_xor<v>(reg<v>(0),op.imm)); ok(); // XOR rAX, Iz
+    case 0x30: E<b>(XOR(b,E<b>(),G<b>())); ok();    // XOR Eb, Gb
+    case 0x31: E<v>(XOR(v,E<v>(),G<v>())); ok();    // XOR Ev, Gv
+    case 0x32: G<b>(XOR(b,G<b>(),E<b>())); ok();    // XOR Gb, Eb
+    case 0x33: G<v>(XOR(v,G<v>(),E<v>())); ok();    // XOR Gv, Ev
+    case 0x34: reg<b>(0,XOR(b,reg<b>(0),op.imm)); ok(); // XOR AL, Ib
+    case 0x35: reg<v>(0,XOR(v,reg<v>(0),op.imm)); ok(); // XOR rAX, Iz
     case 0x36: impossible(); // SS
     case 0x37: illegal(); // AAA
-    case 0x38: rflagged_sub<b>(E<b>(),G<b>()); ok();    // CMP Eb, Gb
-    case 0x39: rflagged_sub<v>(E<v>(),G<v>()); ok();    // CMP Ev, Gv
-    case 0x3a: rflagged_sub<b>(G<b>(),E<b>()); ok();    // CMP Gb, Eb
-    case 0x3b: rflagged_sub<v>(G<v>(),E<v>()); ok();    // CMP Gv, Ev
-    case 0x3c: rflagged_sub<b>(reg<b>(0),op.imm); ok(); // CMP AL, Ib
-    case 0x3d: rflagged_sub<v>(reg<v>(0),op.imm); ok(); // CMP rAX, Iz
+    case 0x38: SUB(b,E<b>(),G<b>()); ok();    // CMP Eb, Gb
+    case 0x39: SUB(v,E<v>(),G<v>()); ok();    // CMP Ev, Gv
+    case 0x3a: SUB(b,G<b>(),E<b>()); ok();    // CMP Gb, Eb
+    case 0x3b: SUB(v,G<v>(),E<v>()); ok();    // CMP Gv, Ev
+    case 0x3c: SUB(b,reg<b>(0),op.imm); ok(); // CMP AL, Ib
+    case 0x3d: SUB(v,reg<v>(0),op.imm); ok(); // CMP rAX, Iz
     case 0x3e: impossible(); // DS: prefix
     case 0x3f: illegal(); // AAS
-    case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47:
-    case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // REX
+    case 0x40: case 0x41: case 0x42: case 0x43: 
+    case 0x44: case 0x45: case 0x46: case 0x47:
+    case 0x48: case 0x49: case 0x4a: case 0x4b: 
+    case 0x4c: case 0x4d: case 0x4e: case 0x4f: // REX
 	impossible();
-    case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: // PUSH rXX
+    case 0x50: case 0x51: case 0x52: case 0x53: 
+    case 0x54: case 0x55: case 0x56: case 0x57: // PUSH rXX
 	push<v>(reg<v>(op.rex_b(op.code & 7))); ok();
-    case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f: // POP rXX
+    case 0x58: case 0x59: case 0x5a: case 0x5b: 
+    case 0x5c: case 0x5d: case 0x5e: case 0x5f: // POP rXX
 	reg<v>(op.rex_b(op.code & 7),pop<v>()); ok();
     case 0x60: illegal(); // PUSHA
     case 0x61: illegal(); // POPA
@@ -321,93 +491,76 @@ template <typename os> interpreter_result::code interpreter::interpret_opcode() 
     case 0x6d: die(); // TODO: INS Yz, DX
     case 0x6e: die(); // TODO: OUTS DX, Xb
     case 0x6f: die(); // TODO: OUTS DX, Xz
-    case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: 
-    case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f: // JCC Ib
-	if (test_cc(op.code & 0xf)) rip() += op.imm;
+    case 0x70: case 0x71: case 0x72: case 0x73: 
+    case 0x74: case 0x75: case 0x76: case 0x77: 
+    case 0x78: case 0x79: case 0x7a: case 0x7b: 
+    case 0x7c: case 0x7d: case 0x7e: case 0x7f: // JCC Ib
+	if (test_cc(op.code & 0xf)) 
+	    rip() += op.imm;
 	ok();
-    case 0x80:
+    case 0x80: // group #1 Eb, Ib
 	switch (op.reg) { 
-	case 0: E<b>(rflagged_add<b>(E<b>(),op.imm)); ok();
-	case 1: E<b>(rflagged_or<b>(E<b>(),op.imm)); ok();
-	case 2: E<b>(rflagged_adc<b>(E<b>(),op.imm)); ok();
-	case 3: E<b>(rflagged_sbb<b>(E<b>(),op.imm)); ok();
-	case 4: E<b>(rflagged_and<b>(E<b>(),op.imm)); ok();
-	case 5: E<b>(rflagged_sub<b>(E<b>(),op.imm)); ok();
-	case 6: E<b>(rflagged_xor<b>(E<b>(),op.imm)); ok();
-	case 7:      rflagged_sub<b>(E<b>(),op.imm); ok();
+	case 0: E<b>(ADD(b,E<b>(),op.imm)); break;
+	case 1: E<b>(OR(b,E<b>(),op.imm)); break;
+	case 2: E<b>(ADC(b,E<b>(),op.imm)); break;
+	case 3: E<b>(SBB(b,E<b>(),op.imm)); break;
+	case 4: E<b>(AND(b,E<b>(),op.imm)); break;
+	case 5: E<b>(SUB(b,E<b>(),op.imm)); break;
+	case 6: E<b>(XOR(b,E<b>(),op.imm)); break;
+	case 7: SUB(b,E<b>(),op.imm); break;
 	}
-    case 0x81: 
-	switch (op.reg) { 
-	case 0: E<v>(rflagged_add<v>(E<v>(),op.imm)); ok();
-	case 1: E<v>(rflagged_or<v>(E<v>(),op.imm)); ok();
-	case 2: E<v>(rflagged_adc<v>(E<v>(),op.imm)); ok();
-	case 3: E<v>(rflagged_sbb<v>(E<v>(),op.imm)); ok();
-	case 4: E<v>(rflagged_and<v>(E<v>(),op.imm)); ok();
-	case 5: E<v>(rflagged_sub<v>(E<v>(),op.imm)); ok();
-	case 6: E<v>(rflagged_xor<v>(E<v>(),op.imm)); ok();
-	case 7:      rflagged_sub<v>(E<v>(),op.imm); ok();
-	}
+	ok();
+    // case 0x81 below
     case 0x82: illegal(); // group #1* Eb, Ib
-    case 0x83: 
+    case 0x81: // group #1 Ev, Iz
+    case 0x83: // group #1 Ev, Ib
 	switch (op.reg) { 
-	case 0: E<v>(rflagged_add<v>(E<v>(),op.immop.imm)); ok();
-	case 1: E<v>(rflagged_or<v>(E<v>(),op.imm)); ok();
-	case 2: E<v>(rflagged_adc<v>(E<v>(),op.imm)); ok();
-	case 3: E<v>(rflagged_sbb<v>(E<v>(),op.imm)); ok();
-	case 4: E<v>(rflagged_and<v>(E<v>(),op.imm)); ok();
-	case 5: E<v>(rflagged_sub<v>(E<v>(),op.imm)); ok();
-	case 6: E<v>(rflagged_xor<v>(E<v>(),op.imm)); ok();
-	case 7:      rflagged_sub<v>(E<v>(),op.imm); ok();
+	case 0: E<v>(ADD(v,E<v>(),op.imm)); break;
+	case 1: E<v>(OR(v,E<v>(),op.imm)); break;
+	case 2: E<v>(ADC(v,E<v>(),op.imm)); break;
+	case 3: E<v>(SBB(v,E<v>(),op.imm)); break;
+	case 4: E<v>(AND(v,E<v>(),op.imm)); break;
+	case 5: E<v>(SUB(v,E<v>(),op.imm)); break;
+	case 6: E<v>(XOR(v,E<v>(),op.imm)); break;
+	case 7: SUB(v,E<v>(),op.imm); break;
 	}
-    case 0x84: rflagged_and<b>(E<b>(),G<b>()); ok(); // TEST Eb, Gb
-    case 0x84: rflagged_and<b>(E<v>(),G<v>()); ok(); // TEST Ev, Gv
-    case 0x88: // MOV Eb,Gb
-        E<b>(G<b>());
 	ok();
-    case 0x89: // MOV Ev,Gv
-        E<v>(G<v>()); 
-	ok();
-    case 0x90: // PAUSE (NOP 0x90)
-	asm("pause");
-	ok();
-    case 0x8a: // MOV Gb,Eb
-        G<b>(E<b>()); 
-	ok();
-    case 0x8b: // MOV Gv,Ev
-        G<v>(E<v>()); 
-	ok();
-    case 0x8c: 
-	die();
-        // if (m_mod == 3) R<v>(0); // MOV Rv,Sw
-        // else M<w>(0);            // MOV Mw,Sw
-	// return i;
-    case 0x8d: // LEA Gv, M
-	G<v>(memory_operand_address(false));
-	ok();
-    case 0x8e: // MOV Sw, Mw or MOV Sw,Rv
-	die();
+    case 0x84: AND(b,E<b>(),G<b>()); ok(); // TEST Eb, Gb
+    case 0x85: AND(v,E<v>(),G<v>()); ok(); // TEST Ev, Gv
+    // NB: exhaustive case match ends here
+    case 0x88: E<b>(G<b>()); ok(); // MOV Eb,Gb
+    case 0x89: E<v>(G<v>()); ok(); // MOV Ev,Gv
+    case 0x90: asm("pause"); ok(); // PAUSE (NOP 0x90)
+    case 0x8a: G<b>(E<b>()); ok(); // MOV Gb,Eb
+    case 0x8b: G<v>(E<v>()); ok(); // MOV Gv,Ev
+    case 0x8c: die(); // MOV Rv, Sw or MOV Mw,Sw
+    case 0x8d: G<v>(memory_operand_address(false)); ok(); // LEA Gv, M
+    case 0x8e: die(); // MOV Sw, Mw or MOV Sw,Rv
     case 0x8f: // POP Ev (8F /0)
 	if (op.reg != 0) illegal();
 	E<v>(pop<v>());
 	ok();
     case 0x9a: illegal(); // CALL Ap
     case 0x9e: // SAHF if CPUID.AHF = 1
+	// TODO: be smarter about lazy flags here
         rflags() = (rflags() & ~0xff) | ah(); 
 	ok();
     case 0x9f: // LAHF if CPUID.AHF = 1
+	// TODO: be smarter about lazy flags here
         ah() = static_cast<uint8_t>(rflags() & 0xff);
 	ok();
     case 0xb8: case 0xb9: case 0xba: case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf: 
 	// MOV RXX, Iq
         reg<v>(op.rex_b(op.code & 7),op.imm);
 	ok();
+    case 0xc3: rip() = pop<v>(); ok(); // RET
     case 0xc4: illegal(); // LES Gz,Mp
     case 0xc5: illegal(); // LDS Gz,Mp
-    case 0xc6:
+    case 0xc6: // MOV Eb, Ib (group #12)
 	if (op.reg != 0) illegal();
 	E<b>(op.imm);
 	ok();
-    case 0xc7:
+    case 0xc7: // MOV Ev, Iz (group #12)
 	if (op.reg != 0) illegal();
 	E<v>(op.imm);
 	ok();
@@ -419,46 +572,103 @@ template <typename os> interpreter_result::code interpreter::interpret_opcode() 
 	push<v>(rip());
 	rip() += op.imm;
 	ok();
-    case 0xe9: // JMP Jz
-	// TODO: check if i need to limit this to eip if address size is supplied
-	rip() += op.imm;
-	ok();
+    case 0xe9: rip() += op.imm; ok(); // JMP Jz
     case 0xea: illegal(); // JMP Ap
+    case 0xeb: rip() += op.imm; ok(); // JMP Jb
     case 0xf4: wont(); // HLT
+    case 0xf6: // group 3 Eb
+	switch (op.reg) { 
+	case 0: // TEST Eb,Ib
+	case 1: // TEST Eb,Ib*
+	    AND(b,E<b>(),op.imm); 
+  	    ok(); 
+	}
+    case 0xf7: // group 3 Ev
+	switch (op.reg) { 
+	case 0: //  TEST Ev,Iz 
+	case 1:	//  TEST Ev,Iz*
+	    rip() += sizeof(z);
+	    AND(v,E<v>(),op.imm); 
+	    ok();
+	}
     case 0xf8: cf(false); ok(); // CLC
-    case 0xf9: cf(true); ok() // STC
-    case 0xfa: // CLI
-    case 0xfb: wont() // STI
+    case 0xf9: cf(true); ok(); // STC
+    case 0xfa: wont(); // CLI
+    case 0xfb: wont(); // STI
     case 0xfc: df(false); ok(); // CLD
     case 0xfd: df(true); ok(); // STD
+    case 0xfe: // opcode group 4
+	switch (op.reg) {
+        case 0: E<b>(INC(b,E<b>())); ok(); // INC Eb
+        case 1: E<b>(DEC(b,E<b>())); ok(); // DEC Eb
+	default: illegal();
+	}
     case 0xff: // opcode group 5
 	switch (op.reg) { 
-	case 4:  // JMP Ev
-	  {
-	    VLOG(1) << "os " << (int)os::bits;
-	    int64_t t = E<v>();
-	    VLOG(1) << "jumping to " << std::hex << t;
-	    rip() = t; // E<v>(); // for a moment
+        case 0: E<v>(INC(v,E<v>())); ok(); // INC Ev
+        case 1: E<v>(DEC(v,E<v>())); ok(); // DEC Ev
+	case 2: // CALL Ev
+	    push<v>(rip()); 
+	    rip() = E<v>(); 
 	    ok();
-          }
-	case 6:  // PUSH Ev
-	    push<v>(E<v>()); 
-	    ok();
+	case 3: die();
+	case 4: rip() = E<v>(); ok(); // JMP Ev
+	case 5: die();
+	case 6: push<v>(E<v>()); ok(); // PUSH Ev
+	case 7: illegal();
 	default: die();
 	}
+    case 0x10b: illegal(); // UD2
     case 0x120: die(); // MOV Rd,Cd
     case 0x121: die(); // MOV Rd,Dd
     case 0x122: die(); // MOV Cd,Rd
     case 0x123: die(); // MOV Dd,Rd
     case 0x134: die(); // SYSENTER (illegal on AMD64, legal on EMT64?, unrecognized by udis86)
     case 0x135: die(); // SYSEXIT (illegal on AMD64, legal on EMT64)
+    case 0x140: case 0x141: case 0x142: case 0x143: 
+    case 0x144: case 0x145: case 0x146: case 0x147: 
+    case 0x148: case 0x149: case 0x14a: case 0x14b:
+    case 0x14c: case 0x14d: case 0x14e: case 0x14f: // CMOVcc Gv,Ev
+	if (test_cc(op.code & 0xf)) 
+	    G<v>(E<v>());
+	ok();
+
+    case 0x180: case 0x181: case 0x182: case 0x183: 
+    case 0x184: case 0x185: case 0x186: case 0x187: 
+    case 0x188: case 0x189: case 0x18a: case 0x18b:
+    case 0x18c: case 0x18d: case 0x18e: case 0x18f: // Jcc Jz
+	if (test_cc(op.code & 0xf)) 
+	    rip() += op.imm;
+	ok();
+    case 0x190: case 0x191: case 0x192: case 0x193: 
+    case 0x194: case 0x195: case 0x196: case 0x197:
+    case 0x198: case 0x199: case 0x19a: case 0x19b: 
+    case 0x19c: case 0x19d: case 0x19e: case 0x19f: // SETcc Eb
+        E<b>(test_cc(op.code & 0xf));
+	ok();
     case 0x1a0: die(); // push<v>(fs()); return i; // PUSH FS 
     case 0x1a8: die(); // push<v>(gs()); return i; // PUSH GS
     case 0x1a1: die(); // fs(pop<v>()); return i;  // POP FS
     case 0x1a9: die(); // gs(pop<v>()); return i;  // POP GS
+    case 0x1b0: // CMPXCHG Eb,Gb
+	{
+	    int8_t value = E<b>();
+	    if (zf(value == reg<b>(0))) E<b>(G<b>());
+ 	    else reg<b>(0,value);
+	    ok();
+	}
+    case 0x1b1: // CMPXCHG Ev,Gv
+	{
+	    int8_t value = E<v>();
+	    if (zf(value == reg<v>(0))) E<v>(G<v>());
+ 	    else reg<v>(0,value);
+	    ok();
+	}
+    case 0x1b6: G<v>(static_cast<uint64_t>(static_cast<uint8_t>(E<b>()))); ok(); // MOVZX Gv, Ev
+    case 0x1b9: illegal(); // UD1
+    case 0x1ff: illegal(); // UD0
     default: break;
     } 
-     
     die();
 } // interpreter::interpret
 

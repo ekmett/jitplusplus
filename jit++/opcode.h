@@ -95,6 +95,7 @@ namespace jitpp {
 	static const uint8_t encoding_Iw     = 0x03;
 	static const uint8_t encoding_IwIb   = 0x04; // ENTER
 	static const uint8_t encoding_Iv     = 0x05; // z,w,q as appropriate to size
+	static const uint8_t encoding_hard   = 0x06; // handle opcode by opcode hard code
 
         static const uint8_t encoding_lut[512];
 
