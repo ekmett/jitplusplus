@@ -1,6 +1,6 @@
 #include <string.h>          // memset
 #include <jit++/tracer.h>    // tracer::*
-#include <jit++/internal.h>  // DEFINE_*
+#include <jit++/common.h>  // DEFINE_*
 #include <pthread.h>
 
 DEFINE_uint64(jitpp_default_stack_size,16384,"the default stack size for tracing. If too small then deep recursion or sparse allocas will fail to trace.");
@@ -19,7 +19,7 @@ namespace jitpp {
 
     tracer::tracer(size_t stack_size) : m_stack_size(stack_size) {
 	for (int i=0;i<16;++i) 
-		m_reg[i] = 0xbadc0ffee00 + i;
+		m_reg[i] = 0xbad0 + i;
     }
 
     tracer::~tracer() {}

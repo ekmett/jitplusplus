@@ -1,6 +1,6 @@
 #include <pthread.h>
+#include <jit++/common.h> // CHECK_*
 #include <jit++/semantics.h>
-#include <jit++/internal.h> // CHECK_*
 #include <jit++/mutex.h>
 
 namespace jitpp { 

@@ -1,5 +1,7 @@
 #include <jit++.h>
-#include <jit++/internal.h>
+#include <jit++/common.h>
+#include <jit++/interpreter.h>
+
 
 using namespace jitpp;
 
@@ -14,9 +16,12 @@ public:
 #define TRACER interpreter
 
 int main(int argc, char ** argv) { 
-    jitpp::options(argc,argv);
+    jitpp::application(argc,argv);
+    VLOG(1) << "options set";
     TRACER t;
+    VLOG(1) << "tracer constructed";
+    printf("Hello World 1\n");
     t.start();
-    VLOG(1) << "interpreting";
+    printf("Hello World 2\n");
     return 0;
 }

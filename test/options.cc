@@ -29,7 +29,7 @@ int main(int argc, char ** argv) {
     std::string usage("./tests [--output_format=XML] [--log_level=success] ");
     google::SetUsageMessage(usage);
 
-    jitpp::options opt(argc,argv,true);  
+    jitpp::application options(argc,argv,true);  
 
     for (int i=0;i<argc;++i) {
 	printf("%s\n",argv[i]);

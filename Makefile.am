@@ -19,12 +19,34 @@ docdir = $(prefix)/share/doc/jit++-$(VERSION)
 dist_doc_DATA = COPYING ChangeLog INSTALL README
 
 # install the headers 
-nobase_noinst_HEADERS = jit++/internal.h jit++/rflags_internal.h
-nobase_include_HEADERS = jit++.h jit++/config.h jit++/interpreter.h jit++/memory.h jit++/mutex.h jit++/opcode.h jit++/options.h jit++/rflags.h jit++/semantics.h jit++/tracer.h
+nobase_noinst_HEADERS = \
+	jit++/config.h \
+	jit++/common.h \
+	jit++/decoder.h \
+	jit++/exceptions.h \
+	jit++/flags.h \
+	jit++/interpreter.h \
+	jit++/memory.h \
+	jit++/mutex.h \
+	jit++/semantics.h \
+	jit++/tracer.h
+nobase_include_HEADERS = jit++.h \
+	jit++/application.h 
 
 # build the runtime system
 lib_LTLIBRARIES = libjit++.la
-libjit___la_SOURCES = jit++/interpreter.cc jit++/memory.cc jit++/mutex.cc jit++/opcode.cc jit++/options.cc jit++/rflags.cc jit++/tracer.cc jit++/tracer_start.S
+libjit___la_SOURCES = \
+	jit++/application.cc \
+	jit++/decoder.cc \
+	jit++/exceptions.cc \
+	jit++/interpreter.cc \
+	jit++/locked_opcodes.cc \
+	jit++/opcodes.cc \
+	jit++/memory.cc \
+	jit++/mutex.cc \
+	jit++/flags.cc \
+	jit++/tracer.cc \
+	jit++/tracer_start.S
 libjit___la_LIBADD = $(LIBOBJS)
 libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
 

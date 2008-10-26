@@ -20,13 +20,11 @@
 #define STACK_OFFSET      0x2a0
 #define STACK_SIZE_OFFSET 0x2a8
 
-/* argument %rdi points to the tracer object */
-
     .text
     .align 16
     .globl _ZN5jitpp6tracer5startEv
     .type  _ZN5jitpp6tracer5startEv, @function
-    /* namespace jitpp { class tracer { virtual void run() = 0; ...; void NOTHROW start(); }; }  */
+    /* namespace jitpp { class interpreter { virtual void run() = 0; ...; void NOTHROW start(); }; }  */
 _ZN5jitpp6tracer5startEv:
     movq %r12, REG_OFFSET_R12(%rdi)
     movq %r13, REG_OFFSET_R13(%rdi)
@@ -62,7 +60,6 @@ _ZN5jitpp6tracer5startEv:
     movq (%rdi), %r13 /* virtual run() */
     call *(%r13)
     mov %r15, %rdi
-/*  jmp _ZN5jitpp6tracer4stopEv */
     /* fall through */
 
     .globl _ZN5jitpp6tracer4stopEv
@@ -94,6 +91,7 @@ _ZN5jitpp6tracer4stopEv:
     movq REG_OFFSET_R13(%rdi), %r13
     movq REG_OFFSET_R14(%rdi), %r14
     movq REG_OFFSET_R15(%rdi), %r15
+
     movq REG_OFFSET_RDI(%rdi), %rdi
     iretq
     /* cs:rip, ss:rsp, and rflags restored by iret */

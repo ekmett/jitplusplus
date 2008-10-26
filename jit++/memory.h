@@ -2,8 +2,8 @@
 #define INCLUDED_JITPP_MEMORY_H
 
 #include <vector>         // std::vector
-#include <jit++/mutex.h> // native_rw_mutex
 #include <pthread.h>      // pthread_rwlock_t
+#include <jit++/mutex.h>  // jitpp::native_rw_mutex
 // TODO: this has a number of internal details that can be pulled out and made into a class
 // we should template off of that rather than code against these methods directly
 // that would permit a bibop to enforce these constraints on more memory.

@@ -6,7 +6,7 @@
 #include <functional> // std::less<>
 #include <iostream>
 
-#include <jit++/internal.h>
+#include <jit++/common.h>
 #include <jit++/memory.h> // *memory*
 
 using namespace jitpp;

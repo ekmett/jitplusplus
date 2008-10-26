@@ -3,6 +3,7 @@
 
 #include <pthread.h>	      // pthread_rwlock_t
 #include <algorithm>          // std::swap
+
 #include <jit++/semantics.h> // move
 
 namespace jitpp {
