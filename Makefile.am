@@ -26,6 +26,7 @@ nobase_noinst_HEADERS = \
 	jit++/exceptions.h \
 	jit++/flags.h \
 	jit++/interpreter.h \
+	jit++/interpreter_internal.h \
 	jit++/memory.h \
 	jit++/mutex.h \
 	jit++/semantics.h \
@@ -40,6 +41,7 @@ libjit___la_SOURCES = \
 	jit++/decoder.cc \
 	jit++/exceptions.cc \
 	jit++/interpreter.cc \
+	jit++/interpreter_internal.cc \
 	jit++/locked_opcodes.cc \
 	jit++/opcodes.cc \
 	jit++/memory.cc \

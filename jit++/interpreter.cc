@@ -1,26 +1,13 @@
-#include <jit++/common.h>
-#include <jit++/interpreter.h>
-#include <jit++/exceptions.h>
 #include <asm/prctl.h>        // SYS_arch_prctl
 #include <sys/syscall.h>      // syscall
+
 #include <udis86.h>
 
-namespace { 
-    const char * os64_reg_names[16] = {"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8","r9","r10","r11","r12","r13","r14","r15"};
-    const char * os32_reg_names[16] = {"eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"};
-    const char * os16_reg_names[16] = {"ax","cx","dx","bx","sp","bp","si","di","r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"};
-    const char * byte_reg_names_rex[16] = {"al","cl","dl","bl","spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"};
-    const char * byte_reg_names_norex[8] = {"al","cl","dl","bl","ah","ch","dh","bh"};
-}
+#include <jit++/common.h>
+#include <jit++/interpreter_internal.h>
+#include <jit++/exceptions.h>
 
 namespace jitpp { 
-    const char * os64::reg_name(int r) { return os64_reg_names[r]; }
-    const char * os32::reg_name(int r) { return os32_reg_names[r]; }
-    const char * os16::reg_name(int r) { return os16_reg_names[r]; }
-    const char * byte_reg_name (int r, bool has_rex) { 
-        return has_rex ? byte_reg_names_rex[r] : byte_reg_names_norex[r];
-    }
-
     int64_t interpreter::mem(bool add_segment_base) const {
         int64_t addr = op.disp;
 	// VLOG(5) << "disp " << std::hex << addr;
@@ -38,29 +25,29 @@ namespace jitpp {
             if (op.has_sib()) {
 	        // VLOG(1) << "with sib";
                 if (op.base != 5) { 
-                    addr += reg<int64_t>(op.base);
+                    addr += reg<int64_t>(*this,op.base);
 	            // VLOG(1) << "addr w/ base " << os64::reg_name(op.base) << " = " << std::hex << addr;
 		}
                 if (op.index != 4) {
-                    addr += reg<int64_t>(op.index) << op.log_scale;
+                    addr += reg<int64_t>(*this,op.index) << op.log_scale;
 	            // VLOG(1) << "addr w/ " << os64::reg_name(op.index) << " * " << op.scale() << " = " << std::hex << addr;
 		}
             } else if (op.is_rip_relative()) {
 		addr += rip();
 	        // VLOG(1) << "addr w/ rip (" << std::hex << rip() << ") = " << std::hex << addr;
-	    } else addr += reg<int64_t>(op.rm);
+	    } else addr += reg<int64_t>(*this,op.rm);
 	} else { 
 	    // VLOG(1) << "32 bit address";
 	    if (op.has_sib()) { 
                 if (op.base != 5) { 
-                    addr += reg<int32_t>(op.base);
+                    addr += reg<int32_t>(*this,op.base);
 		}
                 if (op.index != 4) {
-                    addr += reg<int32_t>(op.index) << op.log_scale;
+                    addr += reg<int32_t>(*this,op.index) << op.log_scale;
 		}
 	    } else if (op.is_rip_relative()) {
 		addr += eip();
-	    } else addr += reg<int32_t>(op.rm);
+	    } else addr += reg<int32_t>(*this,op.rm);
 	}
 	// VLOG(1) << "addr = " << std::hex << addr;
         return addr;
@@ -110,11 +97,11 @@ void interpreter::print_opcode(int64_t rip, int expected) {
     ud_set_pc(&ud,rip);
     size_t bytes = ud_disassemble(&ud);
     VLOG(0)
-	    << noshowbase << setfill('0') << hex << setw(16) << ud_insn_off(&ud) 
-            << ": " << setfill(' ') << setw(32) << ud_insn_hex(&ud)
-	    << " " << ud_insn_asm(&ud);
+	<< noshowbase << setfill('0') << hex << setw(16) << ud_insn_off(&ud) 
+        << ": " << setfill(' ') << setw(32) << ud_insn_hex(&ud)
+	<< " " << ud_insn_asm(&ud);
     LOG_IF(WARNING, (bytes != expected) && (expected != 0))
-	    << "udis86 and jit++ disagree on opcode size! (udis86: " << bytes << " vs. jit++: " << expected << ")";
+	<< "udis86 and jit++ disagree on opcode size! (udis86: " << bytes << " vs. jit++: " << expected << ")";
 }
 
 // assumes x86-64 long mode 
@@ -133,16 +120,16 @@ void interpreter::run() {
 
             if (op.has_lock_prefix()) { 
                 switch (op.log_v) { 
-                case 1: interpret_locked_opcode_16(); break;
-                case 2: interpret_locked_opcode_32(); break;
-                case 3: interpret_locked_opcode_64(); break;
+                case 1: interpret_locked_opcode_16(*this); break;
+                case 2: interpret_locked_opcode_32(*this); break;
+                case 3: interpret_locked_opcode_64(*this); break;
                 default: logic_error(); break;
                 }
             } else {
                 switch (op.log_v) {
-                case 1: interpret_opcode_16(); break;
-                case 2: interpret_opcode_32(); break;
-                case 3: interpret_opcode_64(); break;
+                case 1: interpret_opcode_16(*this); break;
+                case 2: interpret_opcode_32(*this); break;
+                case 3: interpret_opcode_64(*this); break;
                 default: logic_error(); break;
                 }
             }
@@ -159,19 +146,5 @@ void interpreter::run() {
     }
 }
 
-void interpreter::illegal() { 
-    throw invalid_opcode_exception();
-}
-void interpreter::unsupported() { 
-    throw unsupported_opcode_exception();
-}
-void interpreter::uninterpretable() { 
-    throw uninterpretable_opcode_exception();
-}
-void interpreter::logic_error() { 
-    throw interpreter_logic_error();
-}
-
- 
 } // namespace jitpp
 
