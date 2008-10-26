@@ -317,6 +317,10 @@ namespace jitpp {
             if (i.reg != 0) illegal();
             E<v>(i,I);
             return;
+	case 0xc9: // LEAVE
+	    i.rsp() = i.rbp();
+	    i.rbp() = pop<v>(i);
+            return;
         case 0xce: illegal(); // INTO
 	case 0xd3: // group #2 Ev, CL
             switch (i.reg) {
