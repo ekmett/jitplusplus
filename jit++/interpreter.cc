@@ -9,45 +9,45 @@
 
 namespace jitpp { 
     int64_t interpreter::mem(bool add_segment_base) const {
-        int64_t addr = op.disp;
+        int64_t addr = disp;
 	// VLOG(5) << "disp " << std::hex << addr;
 
 	if (add_segment_base) { 
-            if (op.seg_prefix == 0x64)
+            if (seg_prefix == 0x64)
                 addr += fs_base();
-            else if (op.seg_prefix == 0x65)
+            else if (seg_prefix == 0x65)
                 addr += gs_base();
 	    // VLOG(5) << "addr w/ segment base " << std::hex << addr;
 	}
 
-	if (op.address_size_is_64()) { 
+	if (address_size_is_64()) { 
 	    // VLOG(5) << "64 bit address";
-            if (op.has_sib()) {
+            if (has_sib()) {
 	        // VLOG(1) << "with sib";
-                if (op.base != 5) { 
-                    addr += reg<int64_t>(*this,op.base);
-	            // VLOG(1) << "addr w/ base " << os64::reg_name(op.base) << " = " << std::hex << addr;
+                if (base != 5) { 
+                    addr += get_reg<int64_t>(*this,base);
+	            // VLOG(1) << "addr w/ base " << os64::reg_name(base) << " = " << std::hex << addr;
 		}
-                if (op.index != 4) {
-                    addr += reg<int64_t>(*this,op.index) << op.log_scale;
-	            // VLOG(1) << "addr w/ " << os64::reg_name(op.index) << " * " << op.scale() << " = " << std::hex << addr;
+                if (index != 4) {
+                    addr += get_reg<int64_t>(*this,index) << log_scale;
+	            // VLOG(1) << "addr w/ " << os64::reg_name(index) << " * " << scale() << " = " << std::hex << addr;
 		}
-            } else if (op.is_rip_relative()) {
+            } else if (is_rip_relative()) {
 		addr += rip();
 	        // VLOG(1) << "addr w/ rip (" << std::hex << rip() << ") = " << std::hex << addr;
-	    } else addr += reg<int64_t>(*this,op.rm);
+	    } else addr += get_reg<int64_t>(*this,rm);
 	} else { 
 	    // VLOG(1) << "32 bit address";
-	    if (op.has_sib()) { 
-                if (op.base != 5) { 
-                    addr += reg<int32_t>(*this,op.base);
+	    if (has_sib()) { 
+                if (base != 5) { 
+                    addr += get_reg<int32_t>(*this,base);
 		}
-                if (op.index != 4) {
-                    addr += reg<int32_t>(*this,op.index) << op.log_scale;
+                if (index != 4) {
+                    addr += get_reg<int32_t>(*this,index) << log_scale;
 		}
-	    } else if (op.is_rip_relative()) {
+	    } else if (is_rip_relative()) {
 		addr += eip();
-	    } else addr += reg<int32_t>(*this,op.rm);
+	    } else addr += get_reg<int32_t>(*this,rm);
 	}
 	// VLOG(1) << "addr = " << std::hex << addr;
         return addr;
@@ -114,19 +114,19 @@ void interpreter::run() {
 
 	int64_t old_rip = rip();
 	try { 
-	    rip() = op.parse(old_rip);
+	    rip() = parse(old_rip);
 	    if (VLOG_IS_ON(1)) 
 	        print_opcode(old_rip,rip() - old_rip);
 
-            if (op.has_lock_prefix()) { 
-                switch (op.log_v) { 
+            if (has_lock_prefix()) { 
+                switch (log_v) { 
                 case 1: interpret_locked_opcode_16(*this); break;
                 case 2: interpret_locked_opcode_32(*this); break;
                 case 3: interpret_locked_opcode_64(*this); break;
                 default: logic_error(); break;
                 }
             } else {
-                switch (op.log_v) {
+                switch (log_v) {
                 case 1: interpret_opcode_16(*this); break;
                 case 2: interpret_opcode_32(*this); break;
                 case 3: interpret_opcode_64(*this); break;

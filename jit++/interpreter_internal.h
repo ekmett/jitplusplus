@@ -59,10 +59,10 @@ namespace jitpp {
     }
 
     template <> static inline const char * reg_name<int8_t>(const interpreter & i, int r) {
-	return byte_reg_name(r,i.op.has_rex()); 
+	return byte_reg_name(r,i.has_rex()); 
     }
-    template <typename T> static inline T reg(const interpreter & i, int r);
-    template <typename T> static inline void reg(interpreter & i, int r, T v);
+    template <typename T> static inline T get_reg(const interpreter & i, int r);
+    template <typename T> static inline void set_reg(interpreter & i, int r, T v);
     template <typename T> static inline T M(const interpreter & i);
     template <typename T> static inline void M(interpreter & i, T v);
     template <typename T> static inline T G(const interpreter & i);
@@ -74,31 +74,31 @@ namespace jitpp {
     template <typename T> static void push(interpreter & i, T v);
     template <typename T> static T pop(interpreter & i);
 
-    template <> inline int64_t reg<>(const interpreter & i, int r) { return i.m_reg[r]; }
-    template <> inline int32_t reg<>(const interpreter & i, int r) { return i.m_reg[r]; } 
-    template <> inline int16_t reg<>(const interpreter & i, int r) { return i.m_reg[r]; }
-    template <> inline int8_t reg<>(const interpreter & i, int r) { 
-        if (i.op.has_rex()) 
+    template <> inline int64_t get_reg<>(const interpreter & i, int r) { return i.m_reg[r]; }
+    template <> inline int32_t get_reg<>(const interpreter & i, int r) { return i.m_reg[r]; } 
+    template <> inline int16_t get_reg<>(const interpreter & i, int r) { return i.m_reg[r]; }
+    template <> inline int8_t get_reg<>(const interpreter & i, int r) { 
+        if (i.has_rex()) 
             return *reinterpret_cast<const int8_t*>(i.m_reg + r);
 	else
             return *(reinterpret_cast<const int8_t*>(i.m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0));
     }
 
-    template <> inline void reg<>(interpreter & i, int r, int64_t v) { 
+    template <> inline void set_reg<>(interpreter & i, int r, int64_t v) { 
 	VLOG(1) << reg_name<int64_t>(i,r) << " := " << v;
 	i.m_reg[r] = v; 
     }
-    template <> inline void reg<>(interpreter & i, int r, int32_t v) { 
+    template <> inline void set_reg<>(interpreter & i, int r, int32_t v) { 
 	VLOG(1) << reg_name<int32_t>(i,r) << " := " << v;
 	i.m_reg[r] = v; 
     } 
-    template <> inline void reg<>(interpreter & i, int r, int16_t v) { 
+    template <> inline void set_reg<>(interpreter & i, int r, int16_t v) { 
 	VLOG(1) << reg_name<int16_t>(i,r) << " := " << v;
 	*reinterpret_cast<int16_t*>(i.m_reg + r) = v; 
     }
-    template <> inline void reg<>(interpreter & i, int r, int8_t v) { 
+    template <> inline void set_reg<>(interpreter & i, int r, int8_t v) { 
 	VLOG(1) << reg_name<int8_t>(i,r) << " := " << v;
-        if (i.op.has_rex())
+        if (i.has_rex())
 	    *reinterpret_cast<int8_t*>(i.m_reg + r) = v;
         else 
 	    *(reinterpret_cast<int8_t*>(i.m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0)) = v;
@@ -120,26 +120,26 @@ namespace jitpp {
 
     // G (reg field of mod R/M byte selects a general register)
     template <typename T> inline T G(const interpreter & i) { 
-        return reg<T>(i,i.op.reg); 
+        return get_reg<T>(i,i.reg); 
     } 
     template <typename T> inline void G(interpreter & i, T v) { 
-        reg<T>(i,i.op.reg,v); 
+        set_reg<T>(i,i.reg,v); 
     }
 
     // R (r/m field of mod R/M byte selects a general register)
     template <typename T> inline T R(const interpreter & i) { 
-        return reg<T>(i,i.op.rm); 
+        return get_reg<T>(i,i.rm); 
     } 
     template <typename T> inline void R(interpreter & i, T v) { 
-        reg<T>(i,i.op.rm,v); 
+        set_reg<T>(i,i.rm,v); 
     }
 
     // E (r/m follows opcode and specifies operand, either memory or register)
     template <typename T> inline T E(const interpreter & i) { 
-            return i.op.mod == 3 ? R<T>(i) : M<T>(i); 
+            return i.mod == 3 ? R<T>(i) : M<T>(i); 
     }
     template <typename T> inline void E(interpreter & i, T v) { 
-        if (i.op.mod == 3) R<T>(i,v); 
+        if (i.mod == 3) R<T>(i,v); 
         else M<T>(i,v); 
     }
 

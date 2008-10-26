@@ -81,7 +81,7 @@ template <typename os> static void interpret_locked_opcode(interpreter & i) {
     typedef typename os::v v;
     typedef typename os::z z;
 
-    if (i.op.mod == 3) 
+    if (i.mod == 3) 
 	illegal(); 
 
     int64_t addr = i.mem();
@@ -90,21 +90,21 @@ template <typename os> static void interpret_locked_opcode(interpreter & i) {
     w * wp = reinterpret_cast<w*>(addr);
     z * zp = reinterpret_cast<z*>(addr);
 
-    switch (i.op.code) { 
+    switch (i.code) { 
     case 0x1b0: // LOCK CMPXCHG Mb,Gb
-	reg<b>(i,0,lock_cmpxchg<b>(i,bp,reg<b>(i,0),G<b>(i))); 
+	set_reg<b>(i,0,lock_cmpxchg<b>(i,bp,get_reg<b>(i,0),G<b>(i))); 
 	return;
     case 0x1b1: // LOCK CMPXCHG Mv,Gv
-	reg<v>(i,0,lock_cmpxchg<v>(i,vp,reg<v>(i,0),G<v>(i))); 
+	set_reg<v>(i,0,lock_cmpxchg<v>(i,vp,get_reg<v>(i,0),G<v>(i))); 
 	return;
     case 0xfe:
-	switch (i.op.reg) { 
+	switch (i.reg) { 
         case 0: lock_inc<b>(i,bp); return; // LOCK INC Mb
         case 1: lock_dec<b>(i,bp); return; // LOCK DEC Mb
 	default: illegal();
 	}
     case 0xff:
-	switch (i.op.reg) { 
+	switch (i.reg) { 
         case 0: lock_inc<v>(i,vp); return; // LOCK INC Mv
         case 1: lock_dec<v>(i,vp); return; // LOCK DEC Mv
 	default: illegal();

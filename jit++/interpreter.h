@@ -7,7 +7,7 @@
 
 namespace jitpp { 
 
-    class interpreter : public flags::lazy_mixin<tracer> { 
+    class interpreter : public flags::lazy_mixin<tracer>, public decoder { 
     public:
         interpreter() {}
         void run();
@@ -24,11 +24,8 @@ namespace jitpp {
         int64_t fs_base() const;
         int64_t gs_base() const;
 
-	decoder op;
 	void print_regs();
 	void print_opcode(int64_t rip, int expected_size = 0);
-
-	inline bool test_cc(uint8_t cc) const;
 
         inline int32_t eip() const { return static_cast<int32_t>(rip()); }
         inline int64_t rip() const { return m_rip; }
