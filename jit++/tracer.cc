@@ -18,8 +18,9 @@ namespace jitpp {
     }
 
     tracer::tracer(size_t stack_size) : m_stack_size(stack_size) {
-	for (int i=0;i<16;++i) 
-		m_reg[i] = 0xbad0 + i;
+	for (int i=0;i<16;++i) {
+	    m_reg[i] = 0xbad0 + i;
+	}
     }
 
     tracer::~tracer() {}

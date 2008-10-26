@@ -85,19 +85,19 @@ namespace jitpp {
     }
 
     template <> inline void set_reg<>(interpreter & i, int r, int64_t v) { 
-	VLOG(1) << reg_name<int64_t>(i,r) << " := " << v;
+	VLOG(1) << "          " << reg_name<int64_t>(i,r) << " := " << std::hex << v;
 	i.m_reg[r] = v; 
     }
     template <> inline void set_reg<>(interpreter & i, int r, int32_t v) { 
-	VLOG(1) << reg_name<int32_t>(i,r) << " := " << v;
+	VLOG(1) << "          " << reg_name<int32_t>(i,r) << " := " << std::hex << v;
 	i.m_reg[r] = v; 
     } 
     template <> inline void set_reg<>(interpreter & i, int r, int16_t v) { 
-	VLOG(1) << reg_name<int16_t>(i,r) << " := " << v;
+	VLOG(1) << "          " << reg_name<int16_t>(i,r) << " := " << std::hex << v;
 	*reinterpret_cast<int16_t*>(i.m_reg + r) = v; 
     }
     template <> inline void set_reg<>(interpreter & i, int r, int8_t v) { 
-	VLOG(1) << reg_name<int8_t>(i,r) << " := " << v;
+	VLOG(1) << "          " << reg_name<int8_t>(i,r) << " := " << std::hex << v;
         if (i.has_rex())
 	    *reinterpret_cast<int8_t*>(i.m_reg + r) = v;
         else 
@@ -114,7 +114,7 @@ namespace jitpp {
 
     template <typename T> inline void M(interpreter & i, T v) { 
 	int64_t addr = i.mem();
-	VLOG(1) << "*" << std::hex << addr << " := " << v;
+	VLOG(1) << "         *" << std::hex << addr << " := " << std::hex << (int64_t)v;
         *reinterpret_cast<T*>(addr) = v; 
     }
 

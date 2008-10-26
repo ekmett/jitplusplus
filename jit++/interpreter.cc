@@ -8,17 +8,18 @@
 #include <jit++/exceptions.h>
 
 namespace jitpp { 
+    int64_t interpreter::repetitions() const {
+        if (has_repxx_prefix()) return 1;
+        else if (address_size_is_64()) return ecx();
+        else return rcx();
+    }
+
     int64_t interpreter::mem(bool add_segment_base) const {
         int64_t addr = disp;
 	// VLOG(5) << "disp " << std::hex << addr;
 
-	if (add_segment_base) { 
-            if (seg_prefix == 0x64)
-                addr += fs_base();
-            else if (seg_prefix == 0x65)
-                addr += gs_base();
-	    // VLOG(5) << "addr w/ segment base " << std::hex << addr;
-	}
+	if (add_segment_base) 
+	    addr += seg_base();
 
 	if (address_size_is_64()) { 
 	    // VLOG(5) << "64 bit address";
@@ -52,6 +53,11 @@ namespace jitpp {
 	// VLOG(1) << "addr = " << std::hex << addr;
         return addr;
     }
+int64_t interpreter::seg_base() const { 
+    if (seg_prefix == 0x64) return fs_base();
+    else if (seg_prefix == 0x65) return gs_base();
+    else return 0;
+}
 
 
 // operand sizes to template interpret_operand below
@@ -84,7 +90,8 @@ void interpreter::print_regs() {
 	    << (of() ? " OF" : "")
 	    << (pf() ? " PF" : "")
 	    << (af() ? " AF" : "")
-	    << (zf() ? " ZF" : "");
+	    << (zf() ? " ZF" : "")
+	    << (df() ? " DF" : "");
 }
 
 void interpreter::print_opcode(int64_t rip, int expected) { 

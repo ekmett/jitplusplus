@@ -36,6 +36,7 @@ namespace jitpp {
 	inline bool has_lock_prefix() const 	{ return (prefix & prefix_lock_mask) != 0; } 
 	inline bool has_repne_prefix() const 	{ return sse_prefix == 2; } 
 	inline bool has_rep_prefix() const 	{ return sse_prefix == 3; }
+	inline bool has_repxx_prefix() const 	{ return (prefix & prefix_repxx_mask) != 0; }
 	inline bool has_rex() const 		{ return (prefix & prefix_rex_mask) != 0; } 
 	inline bool has_rex_w() const 		{ return (prefix & prefix_rex_w_mask) != 0; } 
 	inline bool has_rex_r() const 		{ return (prefix & prefix_rex_r_mask) != 0; } 

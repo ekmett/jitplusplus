@@ -59,6 +59,34 @@ namespace jitpp {
     template <typename T>  static inline int64_t neg(interpreter & i, int64_t x) {
             return i.handle_rflags(flags::typed<T>::neg,-x);
         }
+    int repetitions(const interpreter & i) { 
+	if (!i.has_repxx_prefix()) return 1;
+	else if (i.address_size_is_64()) return i.ecx();
+	else return i.rcx();
+    }
+    template <typename T> static inline void movs(interpreter & i) { 
+	int64_t base = i.seg_base();
+	T * s = reinterpret_cast<T*>(base + i.rsi());
+	T * d = reinterpret_cast<T*>(i.rdi());
+	int count = repetitions(i);
+	VLOG(1) 
+   	    << "movs:"
+	    << " copying " << count << " " << sizeof(T) << " byte chunks from " 
+	    << std::hex << (base + i.rsi()) << " to " << i.rdi() 
+	    << (i.df() ? " descending" : "");
+	if (i.df()) 
+	    do {
+		*s-- = *d--;
+	    } while (--count != 0);
+	else 
+	    do {
+		VLOG(1) << "copying chunk";
+	        *s++ = *d++;
+	    } while (--count != 0);
+	i.rsi() = reinterpret_cast<int64_t>(s) - base;
+	i.rdi() = reinterpret_cast<int64_t>(d);
+	return;
+    }
 
 #define ADD(T,x,y) add<T>(i,(x),(y))
 #define SUB(T,x,y) sub<T>(i,(x),(y))
@@ -242,7 +270,15 @@ namespace jitpp {
             // TODO: be smarter about lazy flags here
             i.ah() = static_cast<uint8_t>(i.rflags() & 0xff);
             return;
-        case 0xb8: case 0xb9: case 0xba: case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf: 
+	case 0xa4: movs<b>(i); return; // REP? MOVSB
+	case 0xa5: movs<v>(i); return; // REP? MOVS[WDQ]
+	case 0xa8: AND(b,i.imm,i.al()); return; // TEST AL, Ib
+	case 0xa9: AND(v,i.imm,get_reg<v>(i,0)); return; // TEST rAX, Iz
+	case 0xb0: case 0xb1: case 0xb2: case 0xb3:
+	case 0xb4: case 0xb5: case 0xb6: case 0xb7:
+	    set_reg<b>(i,i.rex_b(i.code & 7),I);
+        case 0xb8: case 0xb9: case 0xba: case 0xbb: 
+	case 0xbc: case 0xbd: case 0xbe: case 0xbf: 
             // MOV RXX, Iq
             set_reg<v>(i,i.rex_b(i.code & 7),I);
             return;
@@ -260,14 +296,14 @@ namespace jitpp {
             logic_error();
         case 0xc1: 
             switch (i.reg) {
-            case 0: unsupported(); // ROL Ev,1 
-            case 1: unsupported(); // ROR Ev,1
-            case 2: unsupported(); // RCL Ev,1
-            case 3: unsupported(); // RCR Ev,1
-            case 4: E<v>(i,SAL(v,E<v>(i),1)); return; // SHL Ev,1
-            case 5: E<v>(i,SHR(v,E<v>(i),1)); return; // SHR Ev,1
-            case 6: E<v>(i,SAL(v,E<v>(i),1)); return; // SAL Ev,1 = SHL Ev,1
-            case 7: unsupported(); // SAR Ev,1
+            case 0: unsupported(); // ROL Ev,Ib
+            case 1: unsupported(); // ROR Ev,Ib
+            case 2: unsupported(); // RCL Ev,Ib
+            case 3: unsupported(); // RCR Ev,Ib
+            case 4: E<v>(i,SAL(v,E<v>(i),i.imm)); return; // SHL Ev,Ib
+            case 5: E<v>(i,SHR(v,E<v>(i),i.imm)); return; // SHR Ev,Ib
+            case 6: E<v>(i,SAL(v,E<v>(i),i.imm)); return; // SAL Ev,Ib = SHL Ev,Ib
+            case 7: unsupported(); // SAR Ev,Ib
             }
             logic_error();
         case 0xc3: RIP = POP(v); return; // RET
@@ -282,6 +318,18 @@ namespace jitpp {
             E<v>(i,I);
             return;
         case 0xce: illegal(); // INTO
+	case 0xd3: // group #2 Ev, CL
+            switch (i.reg) {
+            case 0: unsupported(); // ROL Ev,CL
+            case 1: unsupported(); // ROR Ev,CL
+            case 2: unsupported(); // RCL Ev,CL
+            case 3: unsupported(); // RCR Ev,CL
+            case 4: E<v>(i,SAL(v,E<v>(i),i.cl())); return; // SHL Ev,CL
+            case 5: E<v>(i,SHR(v,E<v>(i),i.cl())); return; // SHR Ev,CL
+            case 6: E<v>(i,SAL(v,E<v>(i),i.cl())); return; // SAL Ev,CL = SHL Ev,CL
+            case 7: unsupported(); // SAR Ev,CL
+            }
+            logic_error();
         case 0xd4: illegal(); // AAM Ib
         case 0xd5: illegal(); // AAD Ib
         case 0xd6: illegal(); // SALC
@@ -388,7 +436,8 @@ namespace jitpp {
                 else set_reg<v>(i,0,value);
                 return;
             }
-        case 0x1b6: G<v>(i,static_cast<uint64_t>(static_cast<uint8_t>(E<b>(i)))); return; // MOVZX Gv, Ev
+        case 0x1b6: G<v>(i,static_cast<uint64_t>(static_cast<uint8_t>(E<b>(i)))); return; // MOVZX Gv, Eb
+        case 0x1b7: G<v>(i,static_cast<uint64_t>(static_cast<uint8_t>(E<w>(i)))); return; // MOVZX Gv, Ew
         case 0x1b9: illegal(); // UD1
         case 0x1ff: illegal(); // UD0
         default: break;
