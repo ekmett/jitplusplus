@@ -16,7 +16,7 @@ distdir=$(top_srcdir)/dist/jit++-$(VERSION)
 
 # install the documentation
 docdir = $(prefix)/share/doc/jit++-$(VERSION)
-dist_doc_DATA = COPYING ChangeLog INSTALL README
+dist_doc_DATA = COPYING INSTALL README
 
 # install the headers 
 nobase_noinst_HEADERS = \
@@ -80,7 +80,7 @@ super-clean: maintainer-clean-local
 	rm -rf ./configure config.log config/config.h config.status Makefile Makefile.in ChangeLog
 
 # darcs support
-EXTRA_DIST = _darcs bin/autogen.sh
+EXTRA_DIST = bin/autogen.sh
 
 ChangeLog: _darcs
 	echo "Automatically generated from 'darcs changes' by 'make ChangeLog'" > ChangeLog

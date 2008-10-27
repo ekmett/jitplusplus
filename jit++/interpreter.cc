@@ -25,7 +25,7 @@ namespace jitpp {
 	    // VLOG(5) << "64 bit address";
             if (has_sib()) {
 	        // VLOG(1) << "with sib";
-                if (base != 5) { 
+                if (((base & 7) != 5) || (mod != 0)) { 
                     addr += get_reg<int64_t>(*this,base);
 	            // VLOG(1) << "addr w/ base " << os64::reg_name(base) << " = " << std::hex << addr;
 		}
@@ -40,7 +40,7 @@ namespace jitpp {
 	} else { 
 	    // VLOG(1) << "32 bit address";
 	    if (has_sib()) { 
-                if (base != 5) { 
+                if (((base & 7) != 5) || mod != 0) { 
                     addr += get_reg<int32_t>(*this,base);
 		}
                 if (index != 4) {
