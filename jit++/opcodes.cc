@@ -2,6 +2,9 @@
 #include <jit++/interpreter_internal.h>
 #include <jit++/group_1.h>
 #include <jit++/group_2.h>
+#include <jit++/group_3.h>
+#include <jit++/group_4.h>
+
 
 namespace jitpp { 
     using namespace jitpp::flags;
@@ -24,18 +27,6 @@ namespace jitpp {
 	set_reg<T>(i,r,get_reg<T>(i,0));
 	set_reg<T>(i,0,t);
 	return;
-    }
-
-    template <typename T> static inline int64_t inc(interpreter & i, int64_t x) {
-            return i.handle_rflags(flags::typed<T>::inc,x+1);
-    }
-    
-    template <typename T> static inline int64_t dec(interpreter & i, int64_t x) {
-            return i.handle_rflags(flags::typed<T>::dec,x-1);
-    }
-    
-    template <typename T>  static inline int64_t neg(interpreter & i, int64_t x) {
-            return i.handle_rflags(flags::typed<T>::neg,-x);
     }
 
     int repetitions(const interpreter & i) { 
@@ -68,46 +59,6 @@ namespace jitpp {
 	return;
     }
 
-    template <typename T> static inline void div(interpreter & i);
-
-    template <> static inline void div<int64_t>(interpreter & i) {
-	int64_t rax = get_reg<int64_t>(i,0);
-	int64_t rdx = get_reg<int64_t>(i,2);
-	int64_t divisor = E<int64_t>(i);
-	__asm__("divq %2" : "=a"(rax),"=d"(rdx) : "q"(divisor), "a"(rax), "d"(rdx));
-	set_reg<int64_t>(i,0,rax);
-	set_reg<int64_t>(i,2,rdx);
-    }
-
-    template <> static inline void div<int32_t>(interpreter & i) {
-	int32_t eax = get_reg<int32_t>(i,0);
-	int32_t edx = get_reg<int32_t>(i,2);
-	int32_t divisor = E<int32_t>(i);
-	__asm__("divl %2" : "=a"(eax),"=d"(edx) : "q"(divisor), "a"(eax), "d"(edx));
-	set_reg<int32_t>(i,0,eax);
-	set_reg<int32_t>(i,2,edx);
-    }
-
-    template <> static inline void div<int16_t>(interpreter & i) {
-	int16_t ax = get_reg<int16_t>(i,0);
-	int16_t dx = get_reg<int16_t>(i,2);
-	int16_t divisor = E<int16_t>(i);
-	__asm__("divw %2" : "=a"(ax),"=d"(dx) : "q"(divisor), "a"(ax), "d"(dx));
-	set_reg<int16_t>(i,0,ax);
-	set_reg<int16_t>(i,2,dx);
-    }
-
-    template <> static inline void div<int8_t>(interpreter & i) {
-	int16_t ax = get_reg<int64_t>(i,0);
-	int8_t divisor = E<int64_t>(i);
-	__asm__("divb %1" : "=a"(ax) : "q"(divisor), "a"(ax));
-	set_reg<int16_t>(i,0,ax);
-    }
-    
-
-#define INC(T,x)   inc<T>(i,(x))
-#define DEC(T,x)   dec<T>(i,(x))
-#define NEG(T,x)   neg<T>(i,(x))
 #define PUSH(T,x)  push<T>(i,(x))
 #define POP(T)     pop<T>(i)
 #define I i.imm
@@ -251,7 +202,7 @@ namespace jitpp {
             E<v>(i,POP(v));
             return;
 
-        case 0x90: asm("pause"); return; // PAUSE< >(i,NOP 0x90)
+        case 0x90: asm("pause"); return; // PAUSE (NOP 90)
 	/* 0x90 */ case 0x91: case 0x92: case 0x93: 
 	case 0x94: case 0x95: case 0x96: case 0x97: // XCHG rXX, rAX
 	    xchg<v>(i,i.rex_b(i.code & 7)); return;
@@ -284,13 +235,10 @@ namespace jitpp {
             // MOV RXX, Iq
             set_reg<v>(i,i.rex_b(i.code & 7),I);
             return;
-        case 0xc0: // group 2 Eb, 1
-	    group_2<b>::interpret(i,1);
-	    return;
-        case 0xc1: // group 2 Ev, Ib
-	    group_2<v>::interpret(i,i.imm);
-	    return;
-        case 0xc3: i.rip() = POP(v); return; // RET
+        case 0xc0: group_2<b>::interpret(i,i.imm); return; // group 2 Eb, Ib
+        case 0xc1: group_2<v>::interpret(i,i.imm); return; // group 2 Ev, Ib
+	case 0xc2: i.rip() = POP(v); i.rsp() += sizeof(v)*i.imm; return; // RET (Near) Iw
+        case 0xc3: i.rip() = POP(v); return; // RET (Near)
         case 0xc4: illegal(); // LES Gz,Mp
         case 0xc5: illegal(); // LDS Gz,Mp
         case 0xc6: // MOV Eb, Ib (group #12)
@@ -306,10 +254,10 @@ namespace jitpp {
 	    i.rbp() = pop<v>(i);
             return;
         case 0xce: illegal(); // INTO
-	case 0xd0: group_2<b>::interpret(i,1); return; // group #2 Eb, 1
-	case 0xd1: group_2<v>::interpret(i,1); return; // group #2 Ev, 1
-	case 0xd2: group_2<b>::interpret(i,i.cl()); return; // group #2 Eb, CL
-	case 0xd3: group_2<v>::interpret(i,i.cl()); return; // group #2 Ev, CL
+	case 0xd0: group_2<b>::interpret(i,1); return; // group 2 Eb, 1
+	case 0xd1: group_2<v>::interpret(i,1); return; // group 2 Ev, 1
+	case 0xd2: group_2<b>::interpret(i,i.cl()); return; // group 2 Eb, CL
+	case 0xd3: group_2<v>::interpret(i,i.cl()); return; // group 2 Ev, CL
         case 0xd4: illegal(); // AAM Ib
         case 0xd5: illegal(); // AAD Ib
         case 0xd6: illegal(); // SALC
@@ -321,47 +269,20 @@ namespace jitpp {
         case 0xea: illegal(); // JMP Ap
         case 0xeb: i.rip() += I; return; // JMP Jb
         case 0xf4: uninterpretable(); // HLT
-        case 0xf6: // group 3 Eb
-            switch (i.reg) { 
-            case 0: // TEST Eb,Ib
-            case 1: // TEST Eb,Ib*
-                AND(b,E<b>(i),I); return; 
-            case 3: E<b>(i,NEG(b,E<b>(i))); return;
-	    case 6: div<b>(i); return; // DIV AL, Ev
-	    default: break;
-            }
-	    unsupported();
-        case 0xf7: // group 3 Ev
-            switch (i.reg) { 
-            case 0: //  TEST Ev,Iz 
-            case 1: //  TEST Ev,Iz*
-                AND(v,E<v>(i),I); return;
-            case 3: E<v>(i,NEG(v,E<v>(i))); return;
-	    case 6: div<v>(i); return; // DIV RAX, Ev
-	    default: break;
-            }
-            unsupported();
+        case 0xf6: group_3<b>::interpret(i); return; // group 3 Eb
+        case 0xf7: group_3<v>::interpret(i); return; // group 3 Eb
         case 0xf8: i.cf(false); return; // CLC
         case 0xf9: i.cf(true); return; // STC
         case 0xfa: uninterpretable(); // CLI
         case 0xfb: uninterpretable(); // STI
         case 0xfc: i.df(false); return; // CLD
         case 0xfd: i.df(true); return; // STD
-        case 0xfe: // opcode group 4
-            switch (i.reg) {
-            case 0: E<b>(i,INC(b,E<b>(i))); return; // INC Eb
-            case 1: E<b>(i,DEC(b,E<b>(i))); return; // DEC Eb
-            default: illegal();
-            }
-            logic_error();
+        case 0xfe: group_4<b>::interpret(i); return; // group 4 Eb
         case 0xff: // opcode group 5
             switch (i.reg) { 
-            case 0: E<v>(i,INC(v,E<v>(i))); return; // INC Ev
-            case 1: E<v>(i,DEC(v,E<v>(i))); return; // DEC Ev
-            case 2: // CALL Ev
-                PUSH(v,i.rip()); 
-                i.rip() = E<v>(i); 
-                return;
+            case 0: E<v>(i,group_4<v>::inc(i,E<v>(i))); return; // INC Ev
+            case 1: E<v>(i,group_4<v>::dec(i,E<v>(i))); return; // DEC Ev
+            case 2: PUSH(v,i.rip()); i.rip() = E<v>(i); return; // CALL Ev
             case 3: unsupported();
             case 4: i.rip() = E<v>(i); return; // JMP Ev
             case 5: unsupported();

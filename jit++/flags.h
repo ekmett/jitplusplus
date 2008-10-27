@@ -179,33 +179,7 @@ namespace jitpp {
             int64_t base_rflags() const { return static_cast<const Base *>(this)->m_rflags; } 
         };
 
-        bool neg_cf(const context &);
-        bool neg_af(const context &);
-        bool inc_af(const context &);
-        bool dec_af(const context &);
 	bool bad_flag(const context &);
-        
-        template <typename T> struct typed { 
-            static const int size = sizeof(T)*8;
-            static const int shift_mask = (size == 64) ? 0x3f : 0x1f;
-        
-            static inline bool sbb_cf(const context & ctx) { 
-                return (ctx.op1 < ctx.result || (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
-            }
-
-            static inline bool dec_of(const context & ctx) { 
-                return ctx.result == (1ULL << ((sizeof(T) * 8) - 1)) - 1;
-            }
-            static inline bool neg_inc_of(const context & ctx) { 
-                return ctx.result == 1ULL << (size - 1);
-            }
-
-            static const handler neg, inc, dec;
-        };
-        
-        template <typename T> const handler typed<T>::neg = { neg_cf,   neg_af, 	neg_inc_of, 	OSZAPC, 0 };
-        template <typename T> const handler typed<T>::inc = { bad_flag, inc_af, 	neg_inc_of, 	OSZAP, 	0 };
-        template <typename T> const handler typed<T>::dec = { bad_flag, dec_af, 	dec_of, 	OSZAP, 	0 };
         
         template <typename T> inline bool test_cc(T & i, uint8_t cc) {
             switch (cc) { 

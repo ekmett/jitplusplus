@@ -27,6 +27,8 @@ nobase_noinst_HEADERS = \
 	jit++/flags.h \
 	jit++/group_1.h
 	jit++/group_2.h \
+	jit++/group_3.h \
+	jit++/group_4.h \
 	jit++/interpreter.h \
 	jit++/interpreter_internal.h \
 	jit++/memory.h \
