@@ -4,7 +4,6 @@
 #include <jit++/tracer.h>
 
 namespace jitpp { 
-
     namespace flags { 
 
         static const int32_t CF = 0x0001;
@@ -180,56 +179,33 @@ namespace jitpp {
             int64_t base_rflags() const { return static_cast<const Base *>(this)->m_rflags; } 
         };
 
-        bool add_cf(const context &);
-        bool arith_af(const context &);
-        bool add_of(const context &);
-        bool adc_cf(const context &);
-        bool sub_cf(const context &);
-        bool sub_of(const context &);
         bool neg_cf(const context &);
         bool neg_af(const context &);
         bool inc_af(const context &);
         bool dec_af(const context &);
 	bool bad_flag(const context &);
         
-        extern const handler add, adc, sub, logic;
-        
         template <typename T> struct typed { 
             static const int size = sizeof(T)*8;
             static const int shift_mask = (size == 64) ? 0x3f : 0x1f;
         
+            static inline bool sbb_cf(const context & ctx) { 
+                return (ctx.op1 < ctx.result || (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
+            }
+
             static inline bool dec_of(const context & ctx) { 
                 return ctx.result == (1ULL << ((sizeof(T) * 8) - 1)) - 1;
             }
             static inline bool neg_inc_of(const context & ctx) { 
                 return ctx.result == 1ULL << (size - 1);
             }
-            static inline bool sal_cf(const context & ctx) {
-                return ((ctx.op1 >> (size - ctx.op2)) & 0x1) != 0;
-            }
-            static inline bool sal_of(const context & ctx) { 
-        	return (ctx.op1 ^ ctx.result) < 0;
-            }
-            static inline bool sbb_cf(const context & ctx) { 
-                return (ctx.op1 < ctx.result || (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
-            }
-	    static inline bool shr_cf(const context & ctx) {
-		return (ctx.op1 < 0);
-	    }
-	    static inline bool shr_of(const context & ctx) { 
-		return ((ctx.result << 1) ^ ctx.result) < 0;
-	    }
-        
-            static const handler neg, inc, dec, sal, rol, sbb, shr;
+
+            static const handler neg, inc, dec;
         };
         
-        template <typename T> const handler typed<T>::sbb = { sbb_cf,   arith_af,       sub_of, 	OSZAPC,	0  };
         template <typename T> const handler typed<T>::neg = { neg_cf,   neg_af, 	neg_inc_of, 	OSZAPC, 0 };
         template <typename T> const handler typed<T>::inc = { bad_flag, inc_af, 	neg_inc_of, 	OSZAP, 	0 };
         template <typename T> const handler typed<T>::dec = { bad_flag, dec_af, 	dec_of, 	OSZAP, 	0 };
-        template <typename T> const handler typed<T>::sal = { sal_cf,   bad_flag, 	sal_of, 	OSZPC, 	AF };
-        template <typename T> const handler typed<T>::rol = { sal_cf,   bad_flag, 	bad_flag, 	OF|CF, 	0 };
-	template <typename T> const handler typed<T>::shr = { shr_cf,   bad_flag, 	shr_of,		OSZPC,  AF };
         
         template <typename T> inline bool test_cc(T & i, uint8_t cc) {
             switch (cc) { 

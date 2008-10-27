@@ -25,38 +25,46 @@ nobase_noinst_HEADERS = \
 	jit++/decoder.h \
 	jit++/exceptions.h \
 	jit++/flags.h \
+	jit++/group_1.h
+	jit++/group_2.h \
 	jit++/interpreter.h \
 	jit++/interpreter_internal.h \
 	jit++/memory.h \
 	jit++/mutex.h \
 	jit++/semantics.h \
 	jit++/tracer.h
-nobase_include_HEADERS = jit++.h \
+
+nobase_include_HEADERS = \
+        jit++.h \
 	jit++/application.h 
 
 # build the runtime system
 lib_LTLIBRARIES = libjit++.la
+libjit___la_LIBADD = $(LIBOBJS)
+libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
 libjit___la_SOURCES = \
+	jit++/flags.cc \
+	jit++/interpreter.cc \
 	jit++/application.cc \
 	jit++/decoder.cc \
 	jit++/exceptions.cc \
-	jit++/interpreter.cc \
 	jit++/interpreter_internal.cc \
-	jit++/locked_opcodes.cc \
-	jit++/opcodes.cc \
+	jit++/tracer.cc \
+	jit++/tracer_start.S \
 	jit++/memory.cc \
 	jit++/mutex.cc \
-	jit++/flags.cc \
-	jit++/tracer.cc \
-	jit++/tracer_start.S
-libjit___la_LIBADD = $(LIBOBJS)
-libjit___la_LDFLAGS = -release $(PACKAGE_VERSION) -version-info $(VERSION_INFO)
+	jit++/group_1.cc \ 
+	jit++/locked_opcodes.cc \
+	jit++/opcodes.cc
+
 
 # test suite
 noinst_PROGRAMS = test_suite test_interpreter
+
 test_suite_DEPENDENCIES = libjit++.la
 test_suite_SOURCES = test/options.cc test/t_suite.cc
 test_suite_LDADD = libjit++.la $(BOOST_UNIT_TEST_FRAMEWORK_LIB) $(PTHREAD_LIBS) $(LIB_OBJS)
+
 test_interpreter_DEPENDENCIES = libjit++.la
 test_interpreter_SOURCES = test/t_interpreter.cc
 test_interpreter_LDADD = libjit++.la $(PTHREAD_LIBS) $(LIB_OBJS)
@@ -90,4 +98,4 @@ record:
 	darcs record
 
 tests: test_interpreter test_suite
-	./test_interpreter -logtostderr -v 3
+	./test_interpreter -logtostderr -v 1
