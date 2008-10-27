@@ -60,7 +60,12 @@ namespace jitpp {
 	static inline bool shr_of(const context & ctx) { 
 	    return ((ctx.result << 1) ^ ctx.result) < 0;
 	}
+
     public:
+	// honorary member :)
+	static inline uint64_t shrd(interpreter & i, uint64_t x, uint64_t y, int count) {
+	    return i.handle_rflags(shrd_flags, (y << (size - count)) | (x >> count), x, count);
+        }
 	static void interpret(interpreter & i, int count) { 
 	    count &= mask;
             if (!count) return;
@@ -76,15 +81,18 @@ namespace jitpp {
             }
 	    logic_error();
 	}
-        static const flags::handler sal_flags, rol_flags, shr_flags, ror_flags, sar_flags;
+        static const flags::handler sal_flags, rol_flags, shr_flags, ror_flags, sar_flags, shrd_flags;
     };
 
 
-    template <typename T> const flags::handler group_2<T>::sal_flags = { sal_cf, flags::bad_flag, sal_of, 	     OSZPC,  AF };
-    template <typename T> const flags::handler group_2<T>::rol_flags = { sal_cf, flags::bad_flag, sal_of, 	     OF|CF,  0 };
-    template <typename T> const flags::handler group_2<T>::sar_flags = { sar_cf, flags::bad_flag, flags::bad_flag,   CF,     OF }; 
-    template <typename T> const flags::handler group_2<T>::shr_flags = { sar_cf, flags::bad_flag, shr_of,	     OSZPC,  AF };
-    template <typename T> const flags::handler group_2<T>::ror_flags = { ror_cf, flags::bad_flag, shr_of,            OF|CF,  0 };
+    template <typename T> const flags::handler group_2<T>::sal_flags  = { sal_cf, flags::bad_flag, sal_of, 	     OSZPC,  AF };
+    template <typename T> const flags::handler group_2<T>::rol_flags  = { sal_cf, flags::bad_flag, sal_of, 	     OF|CF,  0 };
+    template <typename T> const flags::handler group_2<T>::sar_flags  = { sar_cf, flags::bad_flag, flags::bad_flag,  CF,     OF }; 
+    template <typename T> const flags::handler group_2<T>::shr_flags  = { sar_cf, flags::bad_flag, shr_of,	     OSZPC,  AF };
+    template <typename T> const flags::handler group_2<T>::ror_flags  = { ror_cf, flags::bad_flag, shr_of,           OF|CF,  0 };
+    template <typename T> const flags::handler group_2<T>::shrd_flags = { sar_cf, flags::bad_flag, shr_of,           OSZPC, AF };
+
+    // shlq shrq isn't technically in group 
 } // namespace jitpp;
 
 #endif

@@ -14,11 +14,12 @@ public:
 };
 // #define TRACER mock_tracer 
 #define TRACER interpreter
+TRACER t;
+
 
 int main(int argc, char ** argv) { 
     jitpp::application(argc,argv);
     VLOG(1) << "options set";
-    TRACER t;
     VLOG(1) << "tracer constructed";
     printf("Hello World 1\n");
     t.start();

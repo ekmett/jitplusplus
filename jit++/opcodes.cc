@@ -68,6 +68,43 @@ namespace jitpp {
 	return;
     }
 
+    template <typename T> static inline void div(interpreter & i);
+
+    template <> static inline void div<int64_t>(interpreter & i) {
+	int64_t rax = get_reg<int64_t>(i,0);
+	int64_t rdx = get_reg<int64_t>(i,2);
+	int64_t divisor = E<int64_t>(i);
+	__asm__("divq %2" : "=a"(rax),"=d"(rdx) : "q"(divisor), "a"(rax), "d"(rdx));
+	set_reg<int64_t>(i,0,rax);
+	set_reg<int64_t>(i,2,rdx);
+    }
+
+    template <> static inline void div<int32_t>(interpreter & i) {
+	int32_t eax = get_reg<int32_t>(i,0);
+	int32_t edx = get_reg<int32_t>(i,2);
+	int32_t divisor = E<int32_t>(i);
+	__asm__("divl %2" : "=a"(eax),"=d"(edx) : "q"(divisor), "a"(eax), "d"(edx));
+	set_reg<int32_t>(i,0,eax);
+	set_reg<int32_t>(i,2,edx);
+    }
+
+    template <> static inline void div<int16_t>(interpreter & i) {
+	int16_t ax = get_reg<int16_t>(i,0);
+	int16_t dx = get_reg<int16_t>(i,2);
+	int16_t divisor = E<int16_t>(i);
+	__asm__("divw %2" : "=a"(ax),"=d"(dx) : "q"(divisor), "a"(ax), "d"(dx));
+	set_reg<int16_t>(i,0,ax);
+	set_reg<int16_t>(i,2,dx);
+    }
+
+    template <> static inline void div<int8_t>(interpreter & i) {
+	int16_t ax = get_reg<int64_t>(i,0);
+	int8_t divisor = E<int64_t>(i);
+	__asm__("divb %1" : "=a"(ax) : "q"(divisor), "a"(ax));
+	set_reg<int16_t>(i,0,ax);
+    }
+    
+
 #define INC(T,x)   inc<T>(i,(x))
 #define DEC(T,x)   dec<T>(i,(x))
 #define NEG(T,x)   neg<T>(i,(x))
@@ -269,9 +306,10 @@ namespace jitpp {
 	    i.rbp() = pop<v>(i);
             return;
         case 0xce: illegal(); // INTO
-	case 0xd3: // group #2 Ev, CL
-	    group_2<v>::interpret(i,i.cl());
-	    return;
+	case 0xd0: group_2<b>::interpret(i,1); return; // group #2 Eb, 1
+	case 0xd1: group_2<v>::interpret(i,1); return; // group #2 Ev, 1
+	case 0xd2: group_2<b>::interpret(i,i.cl()); return; // group #2 Eb, CL
+	case 0xd3: group_2<v>::interpret(i,i.cl()); return; // group #2 Ev, CL
         case 0xd4: illegal(); // AAM Ib
         case 0xd5: illegal(); // AAD Ib
         case 0xd6: illegal(); // SALC
@@ -289,16 +327,20 @@ namespace jitpp {
             case 1: // TEST Eb,Ib*
                 AND(b,E<b>(i),I); return; 
             case 3: E<b>(i,NEG(b,E<b>(i))); return;
+	    case 6: div<b>(i); return; // DIV AL, Ev
+	    default: break;
             }
+	    unsupported();
         case 0xf7: // group 3 Ev
             switch (i.reg) { 
             case 0: //  TEST Ev,Iz 
             case 1: //  TEST Ev,Iz*
                 AND(v,E<v>(i),I); return;
             case 3: E<v>(i,NEG(v,E<v>(i))); return;
-            default: unsupported();
+	    case 6: div<v>(i); return; // DIV RAX, Ev
+	    default: break;
             }
-            logic_error();
+            unsupported();
         case 0xf8: i.cf(false); return; // CLC
         case 0xf9: i.cf(true); return; // STC
         case 0xfa: uninterpretable(); // CLI
@@ -362,6 +404,8 @@ namespace jitpp {
         case 0x1a8: unsupported(); // PUSH(v,gs()); return i; // PUSH GS
         case 0x1a1: unsupported(); // fs(POP(v)); return i;  // POP FS
         case 0x1a9: unsupported(); // gs(POP(v)); return i;  // POP GS
+	case 0x1ac: E<v>(i, group_2<v>::shrd(i, E<v>(i), G<v>(i), i.imm)); return;  // SHRD Ev,Gv,Ib
+	case 0x1ad: E<v>(i, group_2<v>::shrd(i, E<v>(i), G<v>(i), i.cl())); return; // SHRD Ev,Gv,CL
         case 0x1b0: cmpxchg<b>(i); return; // CMPXCHG Eb,Gb
         case 0x1b1: cmpxchg<v>(i); return; // CMPXCHG Ev,Gv
         case 0x1b6: G<v>(i,static_cast<uint64_t>(static_cast<uint8_t>(E<b>(i)))); return; // MOVZX Gv, Eb

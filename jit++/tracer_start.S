@@ -46,7 +46,7 @@ _ZN5jitpp6tracer5startEv:
 
     /* skip ahead on stack and save that location for guard . */
     /*  subq STACK_SIZE_OFFSET(%rdi), %rax */
-    subq $0x30000, %rax
+    subq $0x100000, %rax
     movq %rax, %rsp
     movq %rax, STACK_OFFSET(%rdi);
 
