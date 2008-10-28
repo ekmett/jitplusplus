@@ -59,6 +59,31 @@ namespace jitpp {
 	return;
     }
 
+    void syscall_(interpreter & i) { 
+	int64_t rax = i.rax();
+	VLOG(1) << "executing syscall " << std::hex << rax;
+	if (rax == 0xe7) uninterpretable(); // check out and let the other process clean us up on exit
+	int64_t rbx = i.rbx();
+	int64_t rdx = i.rdx();
+	int64_t rsi = i.rsi();
+	int64_t rdi = i.rdi();
+	register int64_t r8 asm("r8") = i.r8();
+	register int64_t r9 asm("r9") = i.r9(); // how to specify these constraints directly?
+	register int64_t r11 asm("r11");
+
+	// should be valid for linux x86-64 abi
+	__asm__ __volatile__ (
+	    "syscall"
+	    : "=a"(rax), "=b"(rbx), "=r"(r11)
+	    : "a"(rax), "b"(rbx), "d"(rdx), "r"(r9), "R"(rsi), "D"(rdi), "r"(r8)
+	    : "memory", "cc", "cx"
+	);
+
+	i.rax() = rax;
+	i.rbx() = rbx;
+	i.r11() = r11;
+    }
+
 #define PUSH(T,x)  push<T>(i,(x))
 #define POP(T)     pop<T>(i)
 #define I i.imm
@@ -290,6 +315,8 @@ namespace jitpp {
             case 7: illegal();
             default: unsupported();
             }
+	case 0x105: syscall_(i); return; // SYSCALL (wrapped above)
+	case 0x107: uninterpretable(); return; // SYSRET 
         case 0x10b: illegal(); // UD2
         case 0x118: case 0x119: case 0x11a: case 0x11b: 
         case 0x11c: case 0x11d: case 0x11e: case 0x11f: 

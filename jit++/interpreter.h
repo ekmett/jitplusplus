@@ -45,6 +45,14 @@ namespace jitpp {
 	inline int64_t & rbp() { return m_reg[5]; } 
 	inline int64_t & rsi() { return m_reg[6]; }
 	inline int64_t & rdi() { return m_reg[7]; }
+	inline int64_t & r8() { return m_reg[8]; }
+	inline int64_t & r9() { return m_reg[9]; }
+	inline int64_t & r10() { return m_reg[10]; }
+	inline int64_t & r11() { return m_reg[11]; }
+	inline int64_t & r12() { return m_reg[12]; }
+	inline int64_t & r13() { return m_reg[13]; }
+	inline int64_t & r14() { return m_reg[14]; }
+	inline int64_t & r15() { return m_reg[15]; }
 
 	inline int64_t rax() const { return m_reg[0]; } 
 	inline int64_t rcx() const { return m_reg[1]; } 
@@ -54,6 +62,14 @@ namespace jitpp {
 	inline int64_t rbp() const { return m_reg[5]; } 
 	inline int64_t rsi() const { return m_reg[6]; }
 	inline int64_t rdi() const { return m_reg[7]; }
+	inline int64_t r8() const { return m_reg[8]; }
+	inline int64_t r9() const { return m_reg[9]; }
+	inline int64_t r10() const { return m_reg[10]; }
+	inline int64_t r11() const { return m_reg[11]; }
+	inline int64_t r12() const { return m_reg[12]; }
+	inline int64_t r13() const { return m_reg[13]; }
+	inline int64_t r14() const { return m_reg[14]; }
+	inline int64_t r15() const { return m_reg[15]; }
 
 	inline int32_t eax() const { return m_reg[0]; } 
 	inline int32_t ecx() const { return m_reg[1]; } 

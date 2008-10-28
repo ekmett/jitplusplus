@@ -2,6 +2,7 @@
 #include <jit++/common.h>
 #include <jit++/interpreter.h>
 
+#include <stdio.h>
 
 using namespace jitpp;
 
@@ -23,6 +24,11 @@ int main(int argc, char ** argv) {
     VLOG(1) << "tracer constructed";
     printf("Hello World 1\n");
     t.start();
+#ifdef SCENARIO_1
     printf("Hello World 2\n");
+#endif
+    for (int i=0;i<10;++i) { 
+	puts("hi\n");
+    }
     return 0;
 }
