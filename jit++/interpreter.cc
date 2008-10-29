@@ -1,5 +1,8 @@
+
 #include <asm/prctl.h>        // SYS_arch_prctl
 #include <sys/syscall.h>      // syscall
+
+#include <dlfcn.h>
 
 #include <udis86.h>
 
@@ -8,6 +11,8 @@
 #include <jit++/exceptions.h>
 
 DEFINE_uint64(jitpp_steps,-1,"the number of steps to trace before quitting");
+
+    
 
 namespace jitpp { 
     int64_t interpreter::repetitions() const {
@@ -113,6 +118,15 @@ void interpreter::print_opcode(int64_t rip, int expected) {
 	<< "udis86 and jit++ disagree on opcode size! (udis86: " << bytes << " vs. jit++: " << expected << ")";
 }
 
+void print_address(int64_t addr) { 
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void*>(addr),&info)) { 
+	VLOG(2) << info.dli_sname << "+" << (addr - reinterpret_cast<int64_t>(info.dli_saddr)) << " from " << info.dli_fname;
+    } else {
+        VLOG(2) << "unresolved address " << std::hex << addr;
+    }
+}
+
 // assumes x86-64 long mode 
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
 void interpreter::run() { 
@@ -125,8 +139,10 @@ void interpreter::run() {
 	int64_t old_rip = rip();
 	try { 
 	    rip() = parse(old_rip);
-	    if (VLOG_IS_ON(1)) 
+	    if (VLOG_IS_ON(1)) {
+		print_address(rip());
 	        print_opcode(old_rip,rip() - old_rip);
+	    }
 
             if (has_lock_prefix()) { 
                 switch (log_v) { 

@@ -46,14 +46,12 @@ namespace jitpp {
 	    << std::hex << (base + i.rsi()) << " to " << i.rdi() 
 	    << (i.df() ? " descending" : "");
 	if (i.df()) 
-	    do {
+	    while (count-- != 0)
 		*s-- = *d--;
-	    } while (--count != 0);
 	else 
-	    do {
-		VLOG(1) << "copying chunk";
+	    while (count-- != 0)
 	        *s++ = *d++;
-	    } while (--count != 0);
+	// initialize flags here
 	i.rsi() = reinterpret_cast<int64_t>(s) - base;
 	i.rdi() = reinterpret_cast<int64_t>(d);
 	return;
@@ -208,9 +206,9 @@ namespace jitpp {
             return;
 
         case 0x80: group_1<b>::interpret(i,i.imm); return; // group #1 Eb, Ib
-        case 0x81: group_1<v>::interpret(i,i.imm); return; // group #1 Ev, Ib
+        case 0x81: group_1<v>::interpret(i,i.imm); return; // group #1 Ev, Iz
         case 0x82: illegal(); // group #1* Eb, Ib
-        case 0x83: group_1<v>::interpret(i,i.imm); return; // group #1 Ev, Iz
+        case 0x83: group_1<v>::interpret(i,i.imm); return; // group #1 Ev, Ib
         case 0x84: AND(b,E<b>(i),G<b>(i)); return; // TEST Eb, Gb
         case 0x85: AND(v,E<v>(i),G<v>(i)); return; // TEST Ev, Gv
 	case 0x86: xchg<b>(i); return; // XCHG Eb,Gb
@@ -222,7 +220,7 @@ namespace jitpp {
         case 0x8c: unsupported(); // MOV Rv, Sw or MOV Mw,Sw
         case 0x8d: G<v>(i,i.mem(false)); return; // LEA Gv, M
         case 0x8e: unsupported(); // MOV Sw, Mw or MOV Sw,Rv
-        case 0x8f: // POP Ev (8F /0)
+        case 0x8f: // POP Ev (8F /0) (group 10)
             if (i.reg != 0) illegal();
             E<v>(i,POP(v));
             return;
@@ -250,8 +248,8 @@ namespace jitpp {
 
 	case 0xa4: movs<b>(i); return; // REP? MOVSB
 	case 0xa5: movs<v>(i); return; // REP? MOVS[WDQ]
-	case 0xa8: AND(b,i.imm,i.al()); return; // TEST AL, Ib
-	case 0xa9: AND(v,i.imm,get_reg<v>(i,0)); return; // TEST rAX, Iz
+	case 0xa8: AND(b,i.al(),i.imm); return; // TEST AL, Ib
+	case 0xa9: AND(v,get_reg<v>(i,0),i.imm); return; // TEST rAX, Iz
 	case 0xb0: case 0xb1: case 0xb2: case 0xb3:
 	case 0xb4: case 0xb5: case 0xb6: case 0xb7:
 	    set_reg<b>(i,i.rex_b(i.code & 7),I);
@@ -290,9 +288,9 @@ namespace jitpp {
             PUSH(v,i.rip());
             i.rip() += I;
             return;
-        case 0xe9: i.rip() += I; return; // JMP Jz
+        case 0xe9: i.rip() += i.imm; return; // JMP Jz
         case 0xea: illegal(); // JMP Ap
-        case 0xeb: i.rip() += I; return; // JMP Jb
+        case 0xeb: i.rip() += i.imm; return; // JMP Jb
         case 0xf4: uninterpretable(); // HLT
         case 0xf6: group_3<b>::interpret(i); return; // group 3 Eb
         case 0xf7: group_3<v>::interpret(i); return; // group 3 Eb

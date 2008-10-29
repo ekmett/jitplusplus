@@ -62,6 +62,7 @@ AX_UDIS86
 AC_CHECK_HEADERS(gflags/gflags.h)
 AC_CHECK_LIB(gflags, main) # _ZN6google7GetArgvEv)
 
+AC_CHECK_LIB(dl, main)
 
 # google logging framework, this must have pthreads included in the options to work
 AC_CHECK_HEADERS_ONCE(glog/logging.h)

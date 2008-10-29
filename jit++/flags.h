@@ -2,6 +2,7 @@
 #define INCLUDED_JITPP_FLAGS_H
 
 #include <jit++/tracer.h>
+#include <jit++/common.h> // for debug purposes only
 
 namespace jitpp { 
     namespace flags { 
@@ -92,6 +93,7 @@ namespace jitpp {
     
         private:
             inline bool force_lazy(int64_t mask, bool value = true) const { 
+		VLOG(1) << "lazy flag " << mask << " = " << (value ? "true" : "false");
                 m_lazy_flags &= ~mask;
                 if (value) base_rflags() |= mask; 
                 else base_rflags() &= ~mask;

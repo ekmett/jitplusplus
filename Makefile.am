@@ -25,7 +25,7 @@ nobase_noinst_HEADERS = \
 	jit++/decoder.h \
 	jit++/exceptions.h \
 	jit++/flags.h \
-	jit++/group_1.h
+	jit++/group_1.h \
 	jit++/group_2.h \
 	jit++/group_3.h \
 	jit++/group_4.h \
@@ -55,7 +55,7 @@ libjit___la_SOURCES = \
 	jit++/tracer_start.S \
 	jit++/memory.cc \
 	jit++/mutex.cc \
-	jit++/group_1.cc \ 
+	jit++/group_1.cc \
 	jit++/locked_opcodes.cc \
 	jit++/opcodes.cc
 
