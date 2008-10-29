@@ -7,6 +7,8 @@
 #include <jit++/interpreter_internal.h>
 #include <jit++/exceptions.h>
 
+DEFINE_uint64(jitpp_steps,-1,"the number of steps to trace before quitting");
+
 namespace jitpp { 
     int64_t interpreter::repetitions() const {
         if (has_repxx_prefix()) return 1;
@@ -115,7 +117,8 @@ void interpreter::print_opcode(int64_t rip, int expected) {
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
 void interpreter::run() { 
     m_fs_base_known = m_gs_base_known = false;
-    while (true) { 
+    int64_t steps = FLAGS_jitpp_steps;
+    while (steps--) { 
 	if (VLOG_IS_ON(2))
 	    print_regs();
 
@@ -151,6 +154,9 @@ void interpreter::run() {
 	    return;	     // stop interpreting and return
 	}
     }
+    VLOG(1) << "Completed " << FLAGS_jitpp_steps << " steps";
+    print_regs();
+    print_opcode(m_rip);
 }
 
 } // namespace jitpp
