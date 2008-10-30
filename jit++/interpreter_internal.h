@@ -86,23 +86,23 @@ namespace jitpp {
 	else
             return *(reinterpret_cast<const int8_t*>(i.m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0));
     }
-    static const char * reg_spaces = "                                            ";
-    static const char * mem_spaces = "                                           ";
+    static const char * reg_spaces = "                   ";
+    static const char * mem_spaces = "                  ";
  
     template <> inline void set_reg<>(interpreter & i, int r, int64_t v) { 
-	VLOG(1) << reg_spaces << reg_name<int64_t>(i,r) << " := " << std::hex << v;
+	VLOG(1) << reg_spaces << reg_name<int64_t>(i,r) << " := " << std::hex << (int64_t)v;
 	i.m_reg[r] = v; 
     }
     template <> inline void set_reg<>(interpreter & i, int r, int32_t v) { 
-	VLOG(1) << reg_spaces << reg_name<int32_t>(i,r) << " := " << std::hex << v;
+	VLOG(1) << reg_spaces << reg_name<int32_t>(i,r) << " := " << std::hex << (int64_t)v;
 	i.m_reg[r] = v; 
     } 
     template <> inline void set_reg<>(interpreter & i, int r, int16_t v) { 
-	VLOG(1) << reg_spaces << reg_name<int16_t>(i,r) << " := " << std::hex << v;
+	VLOG(1) << reg_spaces << reg_name<int16_t>(i,r) << " := " << std::hex << (int64_t)v;
 	*reinterpret_cast<int16_t*>(i.m_reg + r) = v; 
     }
     template <> inline void set_reg<>(interpreter & i, int r, int8_t v) { 
-	VLOG(1) << reg_spaces << reg_name<int8_t>(i,r) << " := " << std::hex << v;
+	VLOG(1) << reg_spaces << reg_name<int8_t>(i,r) << " := " << std::hex << (int64_t)v;
         if (i.has_rex())
 	    *reinterpret_cast<int8_t*>(i.m_reg + r) = v;
         else 

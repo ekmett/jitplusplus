@@ -23,13 +23,16 @@ int main(int argc, char ** argv) {
     VLOG(1) << "options set";
     VLOG(1) << "tracer constructed";
     printf("Hello World 1\n");
+    fflush(stdout);
     t.start();
 #ifdef SCENARIO_1
     printf("Hello World 2\n");
 #endif
     for (int i=0;i<10;++i) { 
 	puts("hi\n");
+	fflush(stdout);
     }
-    //fflush(stdout);
+    t.stop();
+    puts("rejoined\n");
     return 0;
 }

@@ -56,6 +56,7 @@ namespace jitpp {
 	uint8_t * m_stack;	     /* 572 */
 	size_t m_stack_size;	     /* 580 */
 	/* end of fixed structure */
+	bool m_stopped;
 
     public:
 	tracer(size_t stack_size = default_stack_size());
@@ -65,8 +66,7 @@ namespace jitpp {
 
 	/* single threaded, non re-entrant! */
 	JITPP_NOTHROW void start();
-    protected:
-	JITPP_NOTHROW void stop();
+	void stop() { m_stopped = true; } 
 
     private:
 	// hide copy and assignment

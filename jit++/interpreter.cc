@@ -110,10 +110,17 @@ void interpreter::print_opcode(int64_t rip, int expected) {
     ud_set_input_buffer(&ud,reinterpret_cast<uint8_t*>(rip),15);
     ud_set_pc(&ud,rip);
     size_t bytes = ud_disassemble(&ud);
+    char buf[24];
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void*>(rip),&info)) { 
+        snprintf(buf,24,"%s+%lx",info.dli_sname, rip - reinterpret_cast<int64_t>(info.dli_saddr));
+    } else { 
+	snprintf(buf,24,"%lx",rip);
+    }
     VLOG(0)
-	<< noshowbase << setfill('0') << hex << setw(16) << ud_insn_off(&ud) 
-        << ": " << setfill(' ') << setw(32) << ud_insn_hex(&ud)
-	<< " " << ud_insn_asm(&ud);
+	<< noshowbase << hex << setfill(' ') << setw(24) << buf
+	<< ": " << setw(32) << left << ud_insn_asm(&ud) << " : " << setfill(' ') << ud_insn_hex(&ud);
+
     LOG_IF(WARNING, (bytes != expected) && (expected != 0))
 	<< "udis86 and jit++ disagree on opcode size! (udis86: " << bytes << " vs. jit++: " << expected << ")";
 }
@@ -131,8 +138,9 @@ void print_address(int64_t addr) {
 // TODO: check for correct handling of 66h on e0-e3,70-7f,eb,e9,ff/4,e8,ff/2,c3,c2
 void interpreter::run() { 
     m_fs_base_known = m_gs_base_known = false;
+    m_stopped = false;
     int64_t steps = FLAGS_jitpp_steps;
-    while (steps--) { 
+    while (steps-- && !m_stopped) { 
 	if (VLOG_IS_ON(2))
 	    print_regs();
 
@@ -170,9 +178,11 @@ void interpreter::run() {
 	    return;	     // stop interpreting and return
 	}
     }
-    VLOG(1) << "Completed " << FLAGS_jitpp_steps << " steps";
-    print_regs();
-    print_opcode(m_rip);
+    if (!m_stopped) { 
+        VLOG(1) << "Completed " << FLAGS_jitpp_steps << " steps.";
+        print_regs();
+        print_opcode(m_rip);
+    }
 }
 
 } // namespace jitpp

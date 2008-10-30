@@ -37,6 +37,7 @@ namespace jitpp {
             switch (i.reg) {
             case 0: // TEST E?,I?
             case 1: group_1<T>::and_(i,E<T>(i),i.imm); return; // TEST E?, I?*
+	    case 2: E<T>(i,~E<T>(i)); return; // NOT E?
             case 3: E<T>(i,neg(i,E<T>(i))); return; // NEG E?
             case 4: mul(i); return;  // MUL E?
             case 5: imul(i); return; // IMUL E?
