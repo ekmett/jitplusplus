@@ -82,10 +82,6 @@ namespace jitpp {
 	i.r11() = r11;
     }
 
-#define PUSH(T,x)  push<T>(i,(x))
-#define POP(T)     pop<T>(i)
-#define I i.imm
-
     template <typename os> static void interpret_opcode(interpreter & i) { 
         typedef int8_t b;
         typedef int16_t w;
@@ -98,8 +94,8 @@ namespace jitpp {
         case 0x01: E<v>(i,ADD(b,E<v>(i),G<v>(i))); return;    // ADD Ev, Gv
         case 0x02: G<b>(i,ADD(b,G<b>(i),E<b>(i))); return;    // ADD Gb, Eb
         case 0x03: G<v>(i,ADD(v,G<v>(i),E<v>(i))); return;    // ADD Gv, Ev
-        case 0x04: set_reg<b>(i,0,ADD(b,get_reg<b>(i,0),I)); return; // ADD AL, Ib
-        case 0x05: set_reg<v>(i,0,ADD(v,get_reg<v>(i,0),I)); return; // ADD rAX, Iz
+        case 0x04: set_reg<b>(i,0,ADD(b,get_reg<b>(i,0),i.imm)); return; // ADD AL, Ib
+        case 0x05: set_reg<v>(i,0,ADD(v,get_reg<v>(i,0),i.imm)); return; // ADD rAX, Iz
         case 0x06: illegal(); // PUSH ES
         case 0x07: illegal(); // POP ES
 
@@ -107,8 +103,8 @@ namespace jitpp {
         case 0x09: E<v>(i,OR(v,E<v>(i),G<v>(i))); return;    // OR Ev, Gv
         case 0x0a: G<b>(i,OR(b,G<b>(i),E<b>(i))); return;    // OR Gb, Eb
         case 0x0b: G<v>(i,OR(v,G<v>(i),E<v>(i))); return;    // OR Gv, Ev
-        case 0x0c: set_reg<b>(i,0,OR(b,get_reg<b>(i,0),I)); return; // OR AL, Ib
-        case 0x0d: set_reg<v>(i,0,OR(v,get_reg<v>(i,0),I)); return; // OR rAX, Iz
+        case 0x0c: set_reg<b>(i,0,OR(b,get_reg<b>(i,0),i.imm)); return; // OR AL, Ib
+        case 0x0d: set_reg<v>(i,0,OR(v,get_reg<v>(i,0),i.imm)); return; // OR rAX, Iz
         case 0x0e: illegal(); // PUSH CS
         case 0x0f: unsupported(); // 3DNow! 0F 0F prefixes not supported
 
@@ -116,8 +112,8 @@ namespace jitpp {
         case 0x11: E<v>(i,ADC(v,E<v>(i),G<v>(i))); return;    // ADC Ev, Gv
         case 0x12: G<b>(i,ADC(b,G<b>(i),E<b>(i))); return;    // ADC Gb, Eb
         case 0x13: G<v>(i,ADC(v,G<v>(i),E<v>(i))); return;    // ADC Gv, Ev
-        case 0x14: set_reg<b>(i,0,ADC(b,get_reg<b>(i,0),I)); return; // ADC AL, Ib
-        case 0x15: set_reg<v>(i,0,ADC(v,get_reg<v>(i,0),I)); return; // ADC rAX, Iz
+        case 0x14: set_reg<b>(i,0,ADC(b,get_reg<b>(i,0),i.imm)); return; // ADC AL, Ib
+        case 0x15: set_reg<v>(i,0,ADC(v,get_reg<v>(i,0),i.imm)); return; // ADC rAX, Iz
         case 0x16: illegal(); // PUSH SS
         case 0x17: illegal(); // POP SS
 
@@ -125,8 +121,8 @@ namespace jitpp {
         case 0x19: E<v>(i,SBB(v,E<v>(i),G<v>(i))); return;    // SBB Ev, Gv
         case 0x1a: G<b>(i,SBB(b,G<b>(i),E<b>(i))); return;    // SBB Gb, Eb
         case 0x1b: G<v>(i,SBB(v,G<v>(i),E<v>(i))); return;    // SBB Gv, Ev
-        case 0x1c: set_reg<b>(i,0,SBB(b,get_reg<b>(i,0),I)); return; // SBB AL, Ib
-        case 0x1d: set_reg<v>(i,0,SBB(v,get_reg<v>(i,0),I)); return; // SBB rAX, Iz
+        case 0x1c: set_reg<b>(i,0,SBB(b,get_reg<b>(i,0),i.imm)); return; // SBB AL, Ib
+        case 0x1d: set_reg<v>(i,0,SBB(v,get_reg<v>(i,0),i.imm)); return; // SBB rAX, Iz
         case 0x1e: illegal(); // PUSH DS
         case 0x1f: illegal(); // POP DS
 
@@ -134,8 +130,8 @@ namespace jitpp {
         case 0x21: E<v>(i,AND(v,E<v>(i),G<v>(i))); return;    // AND Ev, Gv
         case 0x22: G<b>(i,AND(b,G<b>(i),E<b>(i))); return;    // AND Gb, Eb
         case 0x23: G<v>(i,AND(v,G<v>(i),E<v>(i))); return;    // AND Gv, Ev
-        case 0x24: set_reg<b>(i,0,AND(b,get_reg<b>(i,0),I)); return; // AND AL, Ib
-        case 0x25: set_reg<v>(i,0,AND(v,get_reg<v>(i,0),I)); return; // AND rAX, Iz
+        case 0x24: set_reg<b>(i,0,AND(b,get_reg<b>(i,0),i.imm)); return; // AND AL, Ib
+        case 0x25: set_reg<v>(i,0,AND(v,get_reg<v>(i,0),i.imm)); return; // AND rAX, Iz
         case 0x27: illegal(); // DAA
         case 0x26: logic_error(); // ES: prefix
 
@@ -143,8 +139,8 @@ namespace jitpp {
         case 0x29: E<v>(i,SUB(v,E<v>(i),G<v>(i))); return;    // SUB Ev, Gv
         case 0x2a: G<b>(i,SUB(b,G<b>(i),E<b>(i))); return;    // SUB Gb, Eb
         case 0x2b: G<v>(i,SUB(v,G<v>(i),E<v>(i))); return;    // SUB Gv, Ev
-        case 0x2c: set_reg<b>(i,0,SUB(b,get_reg<b>(i,0),I)); return; // SUB AL, Ib
-        case 0x2d: set_reg<v>(i,0,SUB(v,get_reg<v>(i,0),I)); return; // SUB rAX, Iz
+        case 0x2c: set_reg<b>(i,0,SUB(b,get_reg<b>(i,0),i.imm)); return; // SUB AL, Ib
+        case 0x2d: set_reg<v>(i,0,SUB(v,get_reg<v>(i,0),i.imm)); return; // SUB rAX, Iz
         case 0x2e: logic_error(); // CS: prefix
         case 0x2f: illegal(); // DAS
 
@@ -152,8 +148,8 @@ namespace jitpp {
         case 0x31: E<v>(i,XOR(v,E<v>(i),G<v>(i))); return;    // XOR Ev, Gv
         case 0x32: G<b>(i,XOR(b,G<b>(i),E<b>(i))); return;    // XOR Gb, Eb
         case 0x33: G<v>(i,XOR(v,G<v>(i),E<v>(i))); return;    // XOR Gv, Ev
-        case 0x34: set_reg<b>(i,0,XOR(b,get_reg<b>(i,0),I)); return; // XOR AL, Ib
-        case 0x35: set_reg<v>(i,0,XOR(v,get_reg<v>(i,0),I)); return; // XOR rAX, Iz
+        case 0x34: set_reg<b>(i,0,XOR(b,get_reg<b>(i,0),i.imm)); return; // XOR AL, Ib
+        case 0x35: set_reg<v>(i,0,XOR(v,get_reg<v>(i,0),i.imm)); return; // XOR rAX, Iz
         case 0x36: logic_error(); // SS
         case 0x37: illegal(); // AAA
 
@@ -161,8 +157,8 @@ namespace jitpp {
         case 0x39: SUB(v,E<v>(i),G<v>(i)); return;    // CMP Ev, Gv
         case 0x3a: SUB(b,G<b>(i),E<b>(i)); return;    // CMP Gb, Eb
         case 0x3b: SUB(v,G<v>(i),E<v>(i)); return;    // CMP Gv, Ev
-        case 0x3c: SUB(b,get_reg<b>(i,0),I); return; // CMP AL, Ib
-        case 0x3d: SUB(v,get_reg<v>(i,0),I); return; // CMP rAX, Iz
+        case 0x3c: SUB(b,get_reg<b>(i,0),i.imm); return; // CMP AL, Ib
+        case 0x3d: SUB(v,get_reg<v>(i,0),i.imm); return; // CMP rAX, Iz
         case 0x3e: logic_error(); // DS: prefix
         case 0x3f: illegal(); // AAS
 
@@ -174,11 +170,11 @@ namespace jitpp {
 
         case 0x50: case 0x51: case 0x52: case 0x53: 
         case 0x54: case 0x55: case 0x56: case 0x57: // PUSH rXX
-            PUSH(v,get_reg<v>(i,i.rex_b(i.code & 7))); return;
+            push<v>(i,get_reg<v>(i,i.rex_b(i.code & 7))); return;
 
         case 0x58: case 0x59: case 0x5a: case 0x5b: 
         case 0x5c: case 0x5d: case 0x5e: case 0x5f: // POP rXX
-            set_reg<v>(i,i.rex_b(i.code & 7),POP(v)); return;
+            set_reg<v>(i,i.rex_b(i.code & 7),pop<v>(i)); return;
 
         case 0x60: illegal(); // PUSHA
         case 0x61: illegal(); // POPA
@@ -188,9 +184,9 @@ namespace jitpp {
         case 0x65: logic_error(); // GS: prefix
         case 0x66: logic_error(); // OS prefix
         case 0x67: logic_error(); // AS prefix
-        case 0x68: PUSH(v,I); return; // PUSH Iz
+        case 0x68: push<v>(i,i.imm); return; // PUSH Iz
         case 0x69: unsupported(); // TODO: IMUL Gv,Ev,Iz
-        case 0x6a: PUSH(v,I); return; // PUSH Ib (check stack slot size?)
+        case 0x6a: push<v>(i,i.imm); return; // PUSH Ib (check stack slot size?)
         case 0x6b: unsupported(); // TODO: IMUL Gv,Ev,Ib
         case 0x6c: unsupported(); // TODO: INS Yb, DX
         case 0x6d: unsupported(); // TODO: INS Yz, DX
@@ -222,7 +218,7 @@ namespace jitpp {
         case 0x8e: unsupported(); // MOV Sw, Mw or MOV Sw,Rv
         case 0x8f: // POP Ev (8F /0) (group 10)
             if (i.reg != 0) illegal();
-            E<v>(i,POP(v));
+            E<v>(i,pop<v>(i));
             return;
 
         case 0x90: asm("pause"); return; // PAUSE (NOP 90)
@@ -252,25 +248,25 @@ namespace jitpp {
 	case 0xa9: AND(v,get_reg<v>(i,0),i.imm); return; // TEST rAX, Iz
 	case 0xb0: case 0xb1: case 0xb2: case 0xb3:
 	case 0xb4: case 0xb5: case 0xb6: case 0xb7:
-	    set_reg<b>(i,i.rex_b(i.code & 7),I);
+	    set_reg<b>(i,i.rex_b(i.code & 7),i.imm);
         case 0xb8: case 0xb9: case 0xba: case 0xbb: 
 	case 0xbc: case 0xbd: case 0xbe: case 0xbf: 
             // MOV RXX, Iq
-            set_reg<v>(i,i.rex_b(i.code & 7),I);
+            set_reg<v>(i,i.rex_b(i.code & 7),i.imm);
             return;
         case 0xc0: group_2<b>::interpret(i,i.imm); return; // group 2 Eb, Ib
         case 0xc1: group_2<v>::interpret(i,i.imm); return; // group 2 Ev, Ib
-	case 0xc2: i.rip() = POP(v); i.rsp() += sizeof(v)*i.imm; return; // RET (Near) Iw
-        case 0xc3: i.rip() = POP(v); return; // RET (Near)
+	case 0xc2: i.rip() = pop<v>(i); i.rsp() += sizeof(v)*i.imm; return; // RET (Near) Iw
+        case 0xc3: i.rip() = pop<v>(i); return; // RET (Near)
         case 0xc4: illegal(); // LES Gz,Mp
         case 0xc5: illegal(); // LDS Gz,Mp
         case 0xc6: // MOV Eb, Ib (group #12)
             if (i.reg != 0) illegal();
-            E<b>(i,I);
+            E<b>(i,i.imm);
             return;
         case 0xc7: // MOV Ev, Iz (group #12)
             if (i.reg != 0) illegal();
-            E<v>(i,I);
+            E<v>(i,i.imm);
             return;
 	case 0xc9: // LEAVE
 	    i.rsp() = i.rbp();
@@ -285,8 +281,8 @@ namespace jitpp {
         case 0xd5: illegal(); // AAD Ib
         case 0xd6: illegal(); // SALC
         case 0xe8: // CALL Jz
-            PUSH(v,i.rip());
-            i.rip() += I;
+            push<v>(i,i.rip());
+            i.rip() += i.imm;
             return;
         case 0xe9: i.rip() += i.imm; return; // JMP Jz
         case 0xea: illegal(); // JMP Ap
@@ -305,11 +301,11 @@ namespace jitpp {
             switch (i.reg) { 
             case 0: E<v>(i,group_4<v>::inc(i,E<v>(i))); return; // INC Ev
             case 1: E<v>(i,group_4<v>::dec(i,E<v>(i))); return; // DEC Ev
-            case 2: PUSH(v,i.rip()); i.rip() = E<v>(i); return; // CALL Ev
+            case 2: push<v>(i,i.rip()); i.rip() = E<v>(i); return; // CALL Ev
             case 3: unsupported();
             case 4: i.rip() = E<v>(i); return; // JMP Ev
             case 5: unsupported();
-            case 6: PUSH(v,E<v>(i)); return; // PUSH Ev
+            case 6: push<v>(i,E<v>(i)); return; // PUSH Ev
             case 7: illegal();
             default: unsupported();
             }
@@ -346,10 +342,10 @@ namespace jitpp {
         case 0x19c: case 0x19d: case 0x19e: case 0x19f: // SETcc Eb
             E<b>(i,test_cc(i,i.code & 0xf));
             return;
-        case 0x1a0: unsupported(); // PUSH(v,fs()); return i; // PUSH FS 
-        case 0x1a8: unsupported(); // PUSH(v,gs()); return i; // PUSH GS
-        case 0x1a1: unsupported(); // fs(POP(v)); return i;  // POP FS
-        case 0x1a9: unsupported(); // gs(POP(v)); return i;  // POP GS
+        case 0x1a0: unsupported(); // push<v>(i,fs()); return i; // PUSH FS 
+        case 0x1a8: unsupported(); // push<v>(i,gs()); return i; // PUSH GS
+        case 0x1a1: unsupported(); // fs(pop<v>(i)); return i;  // POP FS
+        case 0x1a9: unsupported(); // gs(pop<v>(i)); return i;  // POP GS
 	case 0x1ac: E<v>(i, group_2<v>::shrd(i, E<v>(i), G<v>(i), i.imm)); return;  // SHRD Ev,Gv,Ib
 	case 0x1ad: E<v>(i, group_2<v>::shrd(i, E<v>(i), G<v>(i), i.cl())); return; // SHRD Ev,Gv,CL
         case 0x1b0: cmpxchg<b>(i); return; // CMPXCHG Eb,Gb
