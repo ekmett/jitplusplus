@@ -34,12 +34,6 @@
 /* define if your compiler has __attribute__((cold)) */
 #undef HAVE_ATTRIBUTE_COLD
 
-/* define if the Boost library is available */
-#undef HAVE_BOOST
-
-/* define if the Boost::Unit_Test_Framework library is available */
-#undef HAVE_BOOST_UNIT_TEST_FRAMEWORK
-
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 

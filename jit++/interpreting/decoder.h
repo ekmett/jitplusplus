@@ -1,10 +1,10 @@
-#ifndef INCLUDED_JITPP_DECODER_H
-#define INCLUDED_JITPP_DECODER_H
+#ifndef INCLUDED_JITPP_INTERPRETING_DECODER_H
+#define INCLUDED_JITPP_INTERPRETING_DECODER_H
 
 #include <stdint.h>
 
 namespace jitpp { 
-
+  namespace interpreting { 
     struct decoder { 
 	int64_t  imm;        // any immediate value byte, word, dword
 	int32_t  disp;       // displacement
@@ -101,6 +101,7 @@ namespace jitpp {
         static const uint8_t encoding_lut[512];
 
     };
-}
+  } 
+} // namespace jitpp::interpreting
 
 #endif

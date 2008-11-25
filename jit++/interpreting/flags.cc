@@ -1,8 +1,9 @@
 
 #include <jit++/common.h>
-#include <jit++/flags.h>
+#include <jit++/interpreting/flags.h>
 
 namespace jitpp { 
+  namespace interpreting { 
     namespace flags { 
         const uint8_t parity_lut[256] = {
             1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
@@ -38,6 +39,7 @@ namespace jitpp {
             LOG(DFATAL) << "unexpected lazy flag";
             return false;
         }
-   } // namespace flags
+    } // namespace flags
+  } // namespace interpreting
 } // namespace jitpp
 

@@ -45,10 +45,10 @@ AX_C_HAVE_ATTRIBUTE_COLD
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
 # libraries:
-AX_BOOST_BASE([1.36])
+# AX_BOOST_BASE([1.36])
 
 # used for the unit tests
-AX_BOOST_UNIT_TEST_FRAMEWORK
+# AX_BOOST_UNIT_TEST_FRAMEWORK
 
 # pthreads are used pretty much everywhere
 AC_CHECK_HEADERS_ONCE(pthread.h)

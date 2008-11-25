@@ -1,6 +1,6 @@
 #include <iostream>
-#include <jit++/decoder.h>
 #include <jit++/common.h>
+#include <jit++/interpreting/decoder.h>
 
 namespace {
     template <typename T> T fetch(int64_t & i) {
@@ -10,7 +10,7 @@ namespace {
     }
 }
 
-namespace jitpp {
+namespace jitpp { namespace interpreting { 
     const uint8_t decoder::encoding_lut[512] = {
 	// xx
         0x80, 0x80, 0x80, 0x80,  0x01, 0x02, 0x00, 0x00,  0x80, 0x80, 0x80, 0x80,  0x01, 0x02, 0x00, 0x00, // 0x
@@ -226,4 +226,4 @@ namespace jitpp {
 	    VLOG(4) << "imm = " << std::hex << (int)imm;
 	return i;
     }
-}
+} } // namespace jitpp::interpreting

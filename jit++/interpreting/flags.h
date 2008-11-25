@@ -1,10 +1,11 @@
-#ifndef INCLUDED_JITPP_FLAGS_H
-#define INCLUDED_JITPP_FLAGS_H
+#ifndef INCLUDED_JITPP_INTERPRETING_FLAGS_H
+#define INCLUDED_JITPP_INTERPRETING_FLAGS_H
 
-#include <jit++/tracer.h>
+#include <jit++/interpreting/tracer.h>
 #include <jit++/common.h> // for debug purposes only
 
 namespace jitpp { 
+  namespace interpreting {
     namespace flags { 
 
         static const int32_t CF = 0x0001;
@@ -43,6 +44,27 @@ namespace jitpp {
     
         extern const uint8_t parity_lut[256];
         inline bool calculate_parity(uint8_t b) { return parity_lut[b] != 0; }
+
+        template <typename T> inline bool test_cc(T & i, uint8_t cc) {
+            switch (cc) { 
+            case 0x0: return i.of();
+            case 0x1: return !i.of();
+            case 0x2: return i.cf();
+            case 0x3: return !i.cf();
+            case 0x4: return i.zf();
+            case 0x5: return !i.zf();
+            case 0x6: return i.cf() || i.zf();
+            case 0x7: return !(i.cf() || i.zf());
+            case 0x8: return i.sf();
+            case 0x9: return !i.sf();
+            case 0xa: return i.pf();
+            case 0xb: return !i.pf();
+            case 0xc: return i.sf() != i.of();
+            case 0xd: return i.sf() == i.of();
+            case 0xe: return i.zf() || (i.sf() != i.of());
+            case 0xf: return i.zf() && (i.sf() == i.of());
+            }
+        }
     
         template <typename Base> class lazy_mixin : public Base { 
         public:
@@ -128,11 +150,15 @@ namespace jitpp {
                  m_lazy_flags = 0;
                  base_rflags() = value;
             }
+            inline bool test_cc(uint8_t cc) { 
+	        return jitpp::interpreting::flags::test_cc(*this,cc);
+            }
         };
     
         // evaluate all flags eagerly
         template <typename Base> class strict_mixin : public Base { 
         public:
+
     	    inline bool cf() { return (base_rflags() & CF) != 0; }
             inline bool pf() { return (base_rflags() & PF) != 0; }
             inline bool af() { return (base_rflags() & AF) != 0; }
@@ -172,6 +198,10 @@ namespace jitpp {
                 if ((f & SF) != 0) sf(result < 0);
                 return result;
             }
+
+            inline bool test_cc(uint8_t cc) { 
+	        return jitpp::interpreting::flags::test_cc(*this,cc);
+            }
     
             inline int64_t & rflags() const { return base_rflags(); }
             inline void rflags(int64_t value) { base_rflags() = value; }
@@ -182,28 +212,8 @@ namespace jitpp {
         };
 
 	bool bad_flag(const context &);
-        
-        template <typename T> inline bool test_cc(T & i, uint8_t cc) {
-            switch (cc) { 
-            case 0x0: return i.of();
-            case 0x1: return !i.of();
-            case 0x2: return i.cf();
-            case 0x3: return !i.cf();
-            case 0x4: return i.zf();
-            case 0x5: return !i.zf();
-            case 0x6: return i.cf() || i.zf();
-            case 0x7: return !(i.cf() || i.zf());
-            case 0x8: return i.sf();
-            case 0x9: return !i.sf();
-            case 0xa: return i.pf();
-            case 0xb: return !i.pf();
-            case 0xc: return i.sf() != i.of();
-            case 0xd: return i.sf() == i.of();
-            case 0xe: return i.zf() || (i.sf() != i.of());
-            case 0xf: return i.zf() && (i.sf() == i.of());
-            }
-        }
     } // namespace flags;
+  } // namespace interpreting
 } // namespace jitpp
 
 #endif

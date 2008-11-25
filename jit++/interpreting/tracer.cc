@@ -1,7 +1,7 @@
 #include <string.h>          // memset
-#include <jit++/tracer.h>    // tracer::*
-#include <jit++/common.h>  // DEFINE_*
 #include <pthread.h>
+#include <jit++/common.h>  // DEFINE_*
+#include <jit++/interpreting/tracer.h>    // tracer::*
 
 DEFINE_uint64(jitpp_default_stack_size,16384,"the default stack size for tracing. If too small then deep recursion or sparse allocas will fail to trace.");
 
