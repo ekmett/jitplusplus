@@ -11,7 +11,7 @@ namespace jitpp {
 
     template <typename T> struct group_1_traits {
         static inline bool sbb_cf(const flags::context & ctx) { 
-            return (ctx.op1 < ctx.result || (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
+            return ((uint64_t)ctx.op1 < (uint64_t)ctx.result || (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
         }
         static const flags::handler sbb_flags;
     };

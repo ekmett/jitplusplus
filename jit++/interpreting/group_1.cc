@@ -1,3 +1,4 @@
+#include <jit++/common.h>
 #include <jit++/interpreting/group_1.h>
 
 namespace jitpp {
@@ -11,16 +12,17 @@ namespace jitpp {
         return (((((ctx.op1) ^ (ctx.op2)) & ((ctx.op2) ^ (ctx.result))) & 0x8000000000000000ULL) != 0);
     }
     static bool add_cf(const context & ctx) { 
-        return ctx.result < ctx.op1;
+	// VLOG(1) << "add_cf " << (ctx.result < ctx.op1 ? "true" : "false");
+        return (uint64_t)ctx.result < (uint64_t)ctx.op1;
     }
     static bool add_of(const context & ctx) { 
         return (((~((ctx.op1) ^ (ctx.op2)) & ((ctx.op2) ^ (ctx.result))) & 0x8000000000000000ULL) != 0);
     }
     static bool adc_cf(const context & ctx) { 
-        return ctx.result <= ctx.op1;
+        return (uint64_t)ctx.result <= (uint64_t)ctx.op1;
     }
     static bool sub_cf(const context & ctx) { 
-        return ctx.op1 < ctx.op2;
+        return (uint64_t)ctx.op1 < (uint64_t)ctx.op2;
     }
     const handler group_1::add_flags = { add_cf, sbb_af, add_of, OSZAPC,0 };
     const handler group_1::adc_flags = { adc_cf, sbb_af, add_of, OSZAPC,0 };

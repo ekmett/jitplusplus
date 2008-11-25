@@ -151,7 +151,9 @@ namespace jitpp {
                  base_rflags() = value;
             }
             inline bool test_cc(uint8_t cc) { 
-	        return jitpp::interpreting::flags::test_cc(*this,cc);
+                bool result = jitpp::interpreting::flags::test_cc(*this,cc);
+	        VLOG(1) << "condition? " << (result ? "true" : "false");
+	        return result;
             }
         };
     
