@@ -5,6 +5,8 @@
 #include <jit++/interpreting/group_3.h>
 #include <jit++/interpreting/group_4.h>
 #include <jit++/interpreting/group_5.h>
+#include <jit++/interpreting/group_6.h>
+#include <jit++/interpreting/group_7.h>
 #include <jit++/interpreting/misc.h>
 
 namespace jitpp { 
@@ -16,6 +18,8 @@ class opcode_interpreter
    public virtual group_3,
    public virtual group_4, 
    public virtual group_5,
+   public virtual group_6,
+   public virtual group_7,
    public virtual misc {
 
 public:
@@ -181,6 +185,7 @@ public:
 	    rsp() = rbp();
 	    rbp() = pop<v>();
             return;
+	case 0xcc: unsupported(); // INT3
         case 0xce: illegal(); // INTO
 	case 0xd0: interpret_group_2<b>(1); return; // group 2 Eb, 1
 	case 0xd1: interpret_group_2<v>(1); return; // group 2 Ev, 1
@@ -207,14 +212,25 @@ public:
         case 0xfd: df(true); return; // STD
         case 0xfe: interpret_group_4<b>(); return; // group 4 Eb
         case 0xff: interpret_group_5<v>(); return; // group 5 Ev
+	case 0x101: interpret_group_7<os>(); return; // group 7
+	case 0x102: G<v>(lar(E<w>())); return; // LAR Gv, Ew
+	case 0x103: G<v>(lsl(E<w>())); return; // LSL Gv, Ew
+	case 0x110 ... 0x113: uninterpretable(); // UMOV 
 	case 0x105: syscall_(); return; // SYSCALL (wrapped above)
-	case 0x107: uninterpretable(); return; // SYSRET 
+	case 0x106: uninterpretable(); // CLTS 
+	case 0x107: uninterpretable(); // SYSRET 
+	case 0x108: invd(); return;
+	case 0x109: wbinvd(); return;
         case 0x10b: illegal(); // UD2
         case 0x118 ... 0x11f: return; // PREFETCH M, NOP Ev and HINT NOP Ev
         case 0x120: unsupported(); // MOV Rd,Cd
         case 0x121: unsupported(); // MOV Rd,Dd
         case 0x122: unsupported(); // MOV Cd,Rd
         case 0x123: unsupported(); // MOV Dd,Rd
+	case 0x130: wrmsr(); return;
+	case 0x131: rdtsc(); return;
+	case 0x132: rdmsr(); return;
+	case 0x133: rdpmc(); return;
         case 0x134: unsupported(); // SYSENTER (illegal on AMD64, legal on EMT64?, unrecognized by udis86)
         case 0x135: unsupported(); // SYSEXIT (illegal on AMD64, legal on EMT64)
         case 0x140 ... 0x14f: // CMOVcc Gv,Ev

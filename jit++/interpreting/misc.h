@@ -43,6 +43,14 @@ namespace jitpp {
         }
     
         void syscall_();
+	void wbinvd();
+        void invd();
+        void wrmsr();
+	void rdmsr();
+	void rdtsc();
+	void rdpmc();
+	int64_t lsl(int16_t descriptor);
+	int64_t lar(int16_t descriptor);
     };
   }
 }

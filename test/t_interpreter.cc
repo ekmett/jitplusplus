@@ -18,12 +18,7 @@ int main(int argc, char ** argv) {
     t.start();
     printf("0123456789\n");
     fflush(stdout);
-    for (int i=0;i<10;++i) { 
-	puts("hi\n");
-    fflush(stdout);
-    }
     t.stop();
     puts("rejoined\n");
-    fflush(stdout);
     return 0;
 }

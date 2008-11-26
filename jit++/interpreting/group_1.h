@@ -26,6 +26,7 @@ namespace jitpp {
             return handle_rflags(sub_flags,x-y,x,y);
         }
     	inline int64_t and_(int64_t x, int64_t y) {
+	    VLOG(1) << std::hex << x << " & " << y << " = " << (x & y);
             return handle_rflags(logic_flags,x&y);
         }
     	inline int64_t or_(int64_t x, int64_t y) {

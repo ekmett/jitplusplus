@@ -129,7 +129,7 @@ namespace jitpp {
 	inline int8_t dl() const { return m_reg[2]; }
 	inline int8_t bl() const { return m_reg[3]; }
 
-        template <typename T> inline const char * reg_name(int r);
+        template <typename T> inline const char * reg_name(int r) const;
         template <typename T> inline T get_reg(int r) const;
         template <typename T> inline void set_reg(int r, T v);
         template <typename T> inline T M() const;
@@ -145,11 +145,11 @@ namespace jitpp {
     };
 
     extern const char * byte_reg_name(int r, bool has_rex);
-    template <typename T> inline const char * interpreter_base::reg_name(int r) {
+    template <typename T> inline const char * interpreter_base::reg_name(int r) const {
 	typedef typename os<T>::value os; 
 	return os::reg_name(r); 
     }
-    template <> inline const char * interpreter_base::reg_name<int8_t>(int r) {
+    template <> inline const char * interpreter_base::reg_name<int8_t>(int r) const {
         return byte_reg_name(r,has_rex()); 
     }
 
@@ -161,17 +161,19 @@ namespace jitpp {
     extern __attribute__((noreturn)) void uninterpretable(); // uninterpretable opcode encountered, graceful exit, ...
     extern __attribute__((noreturn)) void logic_error();     // uhoh. i misunderstood something
 
+    static const char * reg_spaces = "                   ";
+    static const char * mem_spaces = "                  ";
+
     template <> inline int64_t interpreter_base::get_reg<>(int r) const { return m_reg[r]; }
     template <> inline int32_t interpreter_base::get_reg<>(int r) const { return m_reg[r]; } 
     template <> inline int16_t interpreter_base::get_reg<>(int r) const { return m_reg[r]; }
     template <> inline int8_t interpreter_base::get_reg<>(int r) const { 
-        if (has_rex()) 
-            return *reinterpret_cast<const int8_t*>(m_reg + r);
-	else
-            return *(reinterpret_cast<const int8_t*>(m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0));
+	int8_t result = has_rex() 
+	    ?  *reinterpret_cast<const int8_t*>(m_reg + r)
+            : *(reinterpret_cast<const int8_t*>(m_reg + (r & 3)) + (((r & 4) != 0) ? 1 : 0));
+	VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " -> " << std::hex << (int64_t)result;
+	return result;
     }
-    static const char * reg_spaces = "                   ";
-    static const char * mem_spaces = "                  ";
  
     template <> inline void interpreter_base::set_reg<>(int r, int64_t v) { 
 	VLOG(1) << reg_spaces << reg_name<int64_t>(r) << " := " << std::hex << (int64_t)v;
@@ -195,7 +197,10 @@ namespace jitpp {
 
     // M (r/m field of mod R/M byte selects a memory operand (mod == 3)
     template <typename T> inline T interpreter_base::M() const { 
-        return *reinterpret_cast<T*>(mem());
+	int64_t addr = mem();
+        T result = *reinterpret_cast<T*>(addr);
+	VLOG(1) << mem_spaces << "*" << std::hex << addr << " -> " << std::hex << (int64_t)result;
+	return result;
     }
 
     template <typename T> inline void interpreter_base::M(T v) { 

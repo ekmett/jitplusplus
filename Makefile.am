@@ -35,6 +35,7 @@ nobase_noinst_HEADERS = \
 	jit++/interpreting/group_3.h \
 	jit++/interpreting/group_4.h \
 	jit++/interpreting/group_5.h \
+	jit++/interpreting/group_7.h \
 	jit++/interpreting/impl.h \
 	jit++/interpreting/locked.h \
 	jit++/interpreting/misc.h \
