@@ -12,6 +12,7 @@ namespace jitpp {
     struct os64 {
         typedef int64_t  v;
         typedef int32_t  z;
+	typedef uint32_t uz;
         typedef int64_t  qv;
 	typedef int32_t  smaller_size;
         static const int bits = 64;
@@ -21,6 +22,7 @@ namespace jitpp {
     struct os32 {
         typedef int32_t  v;
         typedef int32_t  z;
+	typedef uint32_t uz;
         typedef int64_t  qv;
 	typedef int16_t  smaller_size;
         static const int bits = 32;
@@ -30,11 +32,15 @@ namespace jitpp {
     struct os16 {
         typedef int16_t  v;
         typedef int16_t  z;
+	typedef uint16_t uz;
         typedef int16_t  qv;
 	typedef int8_t   smaller_size;
         static const int bits = 16;
         static const char * reg_name(int r);
     };
+
+    template <typename T> uint64_t zero_extend(T v) { return v; }
+    template <typename T> int64_t sign_extend(T v) { return v; }
 
     template <typename T> struct os;
     template <> struct os<int16_t> { typedef os16 value; };
@@ -180,8 +186,9 @@ namespace jitpp {
 	m_reg[r] = v; 
     }
     template <> inline void interpreter_base::set_reg<>(int r, int32_t v) { 
+	// zero extended, not sign extended!
 	VLOG(1) << reg_spaces << reg_name<int32_t>(r) << " := " << std::hex << (int64_t)v;
-	m_reg[r] = v; 
+	m_reg[r] = (uint64_t)(uint32_t)v; 
     } 
     template <> inline void interpreter_base::set_reg<>(int r, int16_t v) { 
 	VLOG(1) << reg_spaces << reg_name<int16_t>(r) << " := " << std::hex << (int64_t)v;

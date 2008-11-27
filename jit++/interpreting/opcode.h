@@ -212,6 +212,7 @@ public:
         case 0xfd: df(true); return; // STD
         case 0xfe: interpret_group_4<b>(); return; // group 4 Eb
         case 0xff: interpret_group_5<v>(); return; // group 5 Ev
+	case 0x100: interpret_group_6<os>(); return; // group 6
 	case 0x101: interpret_group_7<os>(); return; // group 7
 	case 0x102: G<v>(lar(E<w>())); return; // LAR Gv, Ew
 	case 0x103: G<v>(lsl(E<w>())); return; // LSL Gv, Ew

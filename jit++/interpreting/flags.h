@@ -62,7 +62,7 @@ namespace jitpp {
             case 0xc: return i.sf() != i.of();
             case 0xd: return i.sf() == i.of();
             case 0xe: return i.zf() || (i.sf() != i.of());
-            case 0xf: return i.zf() && (i.sf() == i.of());
+            case 0xf: return !i.zf() && (i.sf() == i.of());
             }
         }
     
