@@ -1,11 +1,5 @@
-#ifdef JITPP_USE_MODULE
 #include <glog/logging.h>
 import jitpp;
-#else
-#include <jit++.h>
-#include <jit++/common.h>
-#include <jit++/interpreter.h>
-#endif
 #include <stdio.h>
 
 using namespace jitpp;

@@ -1,9 +1,4 @@
-#ifdef JITPP_USE_MODULE
 import jitpp;
-#else
-#include <jit++/common.h>
-#include <jit++/interpreter.h>
-#endif
 #include <algorithm>
 #include <chrono>
 #include <cstdint>

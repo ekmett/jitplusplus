@@ -1,10 +1,5 @@
-#ifdef JITPP_USE_MODULE
 #include <gflags/gflags.h>
 import jitpp;
-#else
-#include <jit++/common.h>
-#include <jit++/interpreter.h>
-#endif
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -80,5 +75,16 @@ int main(int argc, char ** argv) {
             "all instruction groups finish without fallback");
     require(interpreter.rdx() == 0xffffffe7LL && interpreter.rax() == 7 && memory == 9,
             "instruction groups share register and memory state");
+
+    // RET's immediate counts bytes, independently of its return-address width.
+    const unsigned char ret[] = {0xc2, 0x10, 0x00};
+    int64_t stack[4] = {reinterpret_cast<int64_t>(groups)};
+    interpreter.rsp() = reinterpret_cast<int64_t>(stack);
+    interpreter.rip() = reinterpret_cast<int64_t>(ret);
+    FLAGS_jitpp_steps = 1;
+    interpreter.run();
+    require(interpreter.rip() == stack[0] &&
+            interpreter.rsp() == reinterpret_cast<int64_t>(stack) + 8 + 16,
+            "RET imm16 pops the return address and releases the encoded byte count");
     std::puts("PASS: interpreted arithmetic, flags, repeated entry, step limit, native fallback");
 }

@@ -21,23 +21,3 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/udis86"
           cmake --build build
           ctest --test-dir build --output-on-failure
-  linux:
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        cxxflags: ['-O0 -g', '-O2 -g']
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake libtool git python3 libgoogle-glog-dev libgflags-dev
-      - name: Build diagnostic disassembler
-        run: sh bin/build-udis86.sh "$RUNNER_TEMP/udis86"
-      - name: Build and test
-        env:
-          CXXFLAGS: ${{ matrix.cxxflags }}
-        run: |
-          export CPPFLAGS="-I$RUNNER_TEMP/udis86/include"
-          export LDFLAGS="-L$RUNNER_TEMP/udis86/lib -Wl,-rpath,$RUNNER_TEMP/udis86/lib"
-          sh bin/autogen.sh

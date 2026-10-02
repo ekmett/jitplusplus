@@ -151,7 +151,7 @@ namespace jitpp {
             return;
         case 0xc0: interpret_group_2<b>(imm); return; // group 2 Eb, Ib
         case 0xc1: interpret_group_2<v>(imm); return; // group 2 Ev, Ib
-    case 0xc2: rip() = pop<v>(); rsp() += sizeof(v)*imm; return; // RET (Near) Iw
+    case 0xc2: rip() = pop<v>(); rsp() += static_cast<uint16_t>(imm); return; // RET (Near) Iw
         case 0xc3: rip() = pop<v>(); return; // RET (Near)
         case 0xc4: illegal(); // LES Gz,Mp
         case 0xc5: illegal(); // LDS Gz,Mp

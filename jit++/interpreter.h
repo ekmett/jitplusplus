@@ -3,6 +3,7 @@
 
 #include <jit++/common.h>
 #include <jit++/interpreting/traits.h>
+#include <array>
 #include <cstddef>
 #include <type_traits>
 
@@ -209,10 +210,7 @@ namespace jitpp {
         uint8_t log_scale; // 1,2,4 or 8
         uint8_t index;     // extended with rex_x
         uint8_t base;      // extended with rex_b
-        union {
-            uint8_t drex; // drex byte value if present
-            uint8_t imm2; // stack slot count for enter
-        };
+        uint8_t imm2; // second immediate byte, e.g. ENTER or SSE4a
         uint8_t seg_prefix;
         uint8_t log_v; // default operand size = 2^log_v bytes
 
@@ -235,7 +233,6 @@ namespace jitpp {
         inline bool has_extra() const { return (parts & part_extra) != 0; }
         inline bool has_modrm() const { return (parts & part_modrm) != 0; }
         inline bool has_sib() const { return (parts & part_sib) != 0; }
-        inline bool has_drex() const { return (parts & part_drex) != 0; }
         inline bool has_disp() const { return (parts & part_disp) != 0; }
         inline bool has_imm() const { return (parts & part_imm) != 0; }
         inline bool has_imm2() const { return (parts & part_imm2) != 0; }
@@ -265,10 +262,9 @@ namespace jitpp {
         static const uint8_t prefix_rex_x_mask = 0x02;
         static const uint8_t prefix_rex_b_mask = 0x01;
 
-        // extra, modrm, sib, drex, disp, imm, imm2
+        // extra, modrm, sib, disp, imm, imm2
         static const uint8_t part_modrm = 0x80; // == encoding_modrm_byte
         static const uint8_t part_extra = 0x40; // == encoding_extra_byte
-        static const uint8_t part_drex = 0x20;  // == encoding_drex_byte
         static const uint8_t part_sib = 0x10;   // scale index & base are valid
         static const uint8_t part_disp = 0x08;
         static const uint8_t part_imm = 0x04;
@@ -276,7 +272,6 @@ namespace jitpp {
 
         static const uint8_t encoding_has_modrm = 0x80;
         static const uint8_t encoding_extra_byte = 0x40;    // [0f 38] or [0f 3a]
-        static const uint8_t encoding_drex_byte = 0x20;     // [0f 24] of [0f 25]
         static const uint8_t encoding_default_os_64 = 0x10; // 50-5f, ff/6 8f/0
 
         static const uint8_t encoding_immediate_mask = 0x07;
@@ -288,7 +283,7 @@ namespace jitpp {
         static const uint8_t encoding_Iv = 0x05;   // z,w,q as appropriate to size
         static const uint8_t encoding_hard = 0x06; // handle opcode by opcode hard code
 
-        static const uint8_t encoding_lut[512];
+        static const std::array<uint8_t, 512> encoding_lut;
 
         // Registers, memory operands, and diagnostics.
 
