@@ -6,7 +6,7 @@ roundtrip:
     pushq %r12
     subq $8, %rsp
     movq %rsi, %r12
-    call _ZN5jitpp6tracer5startEv@PLT
+    call _ZN5jitpp11interpreter5startEv@PLT
     movl $-1, %eax
     addl $1, %eax
     .globl roundtrip_step_limit

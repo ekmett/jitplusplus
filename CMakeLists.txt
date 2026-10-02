@@ -1,0 +1,59 @@
+cmake_minimum_required(VERSION 3.30)
+project(jitpp VERSION 0.1 LANGUAGES CXX ASM)
+
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+   NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    message(FATAL_ERROR "jitpp currently requires Linux x86-64.")
+endif()
+
+find_package(Threads REQUIRED)
+find_package(glog CONFIG REQUIRED)
+find_package(gflags CONFIG REQUIRED)
+find_path(UDIS86_INCLUDE_DIR udis86.h REQUIRED)
+find_library(UDIS86_LIBRARY udis86 REQUIRED)
+
+configure_file(cmake/config.h.in generated/jit++/config.h COPYONLY)
+
+add_library(jitpp STATIC
+    jit++/application.cc
+    jit++/interpreter.cc
+    jit++/exceptions.cc
+    jit++/memory.cc
+    jit++/mutex.cc
+    jit++/interpreting/base.cc
+    jit++/interpreting/decoder.cc
+    jit++/interpreting/flags.cc
+    jit++/interpreting/group_1.cc
+    jit++/interpreting/run.cc
+    jit++/interpreting/misc.cc
+    jit++/interpreting/tracer_start.S
+)
+add_library(jitpp::jitpp ALIAS jitpp)
+target_compile_features(jitpp PUBLIC cxx_std_26)
+set_target_properties(jitpp PROPERTIES CXX_EXTENSIONS OFF CXX_SCAN_FOR_MODULES ON)
+target_sources(jitpp PUBLIC FILE_SET CXX_MODULES FILES jitpp.ccm)
+# The generated configuration must precede any Autotools source-tree config.h.
+target_include_directories(jitpp PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${UDIS86_INCLUDE_DIR}"
+)
+target_link_libraries(jitpp PRIVATE glog::glog ${GFLAGS_TARGET} Threads::Threads
+    "${UDIS86_LIBRARY}" ${CMAKE_DL_LIBS})
+
+option(JITPP_BUILD_TESTS "Build the interpreter tests" "${PROJECT_IS_TOP_LEVEL}")
+if(JITPP_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_roundtrip test/t_roundtrip.cc test/roundtrip.S)
+    target_link_libraries(test_roundtrip PRIVATE jitpp::jitpp ${GFLAGS_TARGET})
+    add_executable(test_interpreter test/t_interpreter.cc)
+    target_link_libraries(test_interpreter PRIVATE jitpp::jitpp glog::glog)
+    add_executable(bench_interpreter EXCLUDE_FROM_ALL test/bench_interpreter.cc)
+    target_link_libraries(bench_interpreter PRIVATE jitpp::jitpp)
+    foreach(target IN ITEMS test_roundtrip test_interpreter bench_interpreter)
+        target_compile_definitions(${target} PRIVATE JITPP_USE_MODULE=1)
+        set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
+    endforeach()
+    add_test(NAME roundtrip COMMAND test_roundtrip)
+    add_test(NAME interpreter COMMAND test_interpreter)
+endif()

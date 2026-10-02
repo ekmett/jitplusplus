@@ -1,25 +1,25 @@
+#ifdef JITPP_USE_MODULE
+#include <gflags/gflags.h>
+import jitpp;
+#else
 #include <jit++/common.h>
-#include <jit++/interpreting/impl.h>
+#include <jit++/interpreter.h>
+#endif
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
+#include <type_traits>
+
+static_assert(std::is_standard_layout<jitpp::interpreter>::value,
+              "assembly state must have a standard layout");
+static_assert(!std::is_polymorphic<jitpp::interpreter>::value,
+              "the concrete interpreter needs no virtual dispatch");
 
 DECLARE_uint64(jitpp_steps);
 
-extern "C" uint64_t roundtrip(jitpp::tracer *, bool *);
+extern "C" uint64_t roundtrip(jitpp::interpreter *, bool *);
 extern "C" char roundtrip_stopped[], roundtrip_unsupported[];
 extern "C" char roundtrip_step_limit[];
-
-class observed_interpreter : public jitpp::interpreter_impl {
-public:
-    unsigned entries = 0;
-    int64_t exit_rip = 0, exit_rax = 0;
-    void run() override {
-        ++entries;
-        interpreter_impl::run();
-        exit_rip = rip();
-        exit_rax = rax();
-    }
-};
 
 static void require(bool condition, const char * message) {
     if (!condition) {
@@ -30,30 +30,55 @@ static void require(bool condition, const char * message) {
 
 int main(int argc, char ** argv) {
     jitpp::application app(argc, argv);
-    observed_interpreter interpreter;
+    jitpp::interpreter interpreter;
     for (unsigned iteration = 0; iteration != 2; ++iteration) {
         FLAGS_jitpp_steps = -1;
         uint64_t flags = roundtrip(&interpreter, &interpreter.m_stopped);
-        require(interpreter.entries == iteration + 1, "interpreter entry count");
-        require(interpreter.exit_rip == reinterpret_cast<int64_t>(roundtrip_stopped),
+        require(interpreter.rip() == reinterpret_cast<int64_t>(roundtrip_stopped),
                 "arithmetic and stop must execute under interpretation");
-        require(interpreter.exit_rax == 0, "interpreted addition result");
+        require(interpreter.rax() == 0, "interpreted addition result");
         require((flags & 0x8d5) == 0x55, "arithmetic flags survive native resumption");
     }
     // Stop after the addition, before the explicit stop store.
     FLAGS_jitpp_steps = 2;
     uint64_t flags = roundtrip(&interpreter, &interpreter.m_stopped);
-    require(interpreter.exit_rip == reinterpret_cast<int64_t>(roundtrip_step_limit),
+    require(interpreter.rip() == reinterpret_cast<int64_t>(roundtrip_step_limit),
             "step limit resumes immediately after the second instruction");
-    require(interpreter.exit_rax == 0, "step-limited interpreted addition result");
+    require(interpreter.rax() == 0, "step-limited interpreted addition result");
     require((flags & 0x8d5) == 0x55, "step-limit exit preserves flags");
 
     // With a separate stop flag, CPUID is the first unsupported instruction.
     bool ignored_stop = false;
     FLAGS_jitpp_steps = -1;
     roundtrip(&interpreter, &ignored_stop);
-    require(interpreter.exit_rip == reinterpret_cast<int64_t>(roundtrip_unsupported),
+    require(interpreter.rip() == reinterpret_cast<int64_t>(roundtrip_unsupported),
             "unsupported instruction resumes at its original address");
     require(ignored_stop, "interpreted store reaches native memory");
+
+    // Cross the former inheritance branches while sharing registers and memory.
+    const unsigned char groups[] = {
+        0xb8, 7, 0, 0, 0,        // mov $7, %eax
+        0x83, 0xc0, 5,           // group 1: add $5, %eax -> 12
+        0xc1, 0xe0, 1,           // group 2: shl $1, %eax -> 24
+        0xf7, 0xd0,              // group 3: not %eax -> 0xffffffe7
+        0xfe, 0xc0,              // group 4: inc %al -> 0xffffffe8
+        0x48, 0xff, 0xc8,        // group 5: dec %rax -> 0xffffffe7
+        0x48, 0x92,              // misc: xchg %rax, %rdx
+        0xb8, 7, 0, 0, 0,        // mov $7, %eax
+        0xf0, 0x0f, 0xb1, 0x1e,  // locked: cmpxchg %ebx, (%rsi)
+        0xc6, 0x07, 1            // movb $1, (%rdi): stop
+    };
+    int32_t memory = 7;
+    interpreter.rbx() = 9;
+    interpreter.rdx() = 42;
+    interpreter.rsi() = reinterpret_cast<int64_t>(&memory);
+    interpreter.rdi() = reinterpret_cast<int64_t>(&interpreter.m_stopped);
+    interpreter.rip() = reinterpret_cast<int64_t>(groups);
+    interpreter.rflags(2);
+    interpreter.run();
+    require(interpreter.rip() == reinterpret_cast<int64_t>(groups + sizeof(groups)),
+            "all instruction groups finish without fallback");
+    require(interpreter.rdx() == 0xffffffe7LL && interpreter.rax() == 7 && memory == 9,
+            "instruction groups share register and memory state");
     std::puts("PASS: interpreted arithmetic, flags, repeated entry, step limit, native fallback");
 }

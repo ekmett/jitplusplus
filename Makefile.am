@@ -28,18 +28,12 @@ nobase_noinst_HEADERS = \
 	jit++/memory.h \
 	jit++/mutex.h \
 	jit++/semantics.h \
-	jit++/interpreting/decoder.h \
 	jit++/interpreting/flags.h \
-	jit++/interpreting/group_1.h \
-	jit++/interpreting/group_2.h \
+	jit++/interpreting/base.h \
+	jit++/interpreting/opcode.h \
 	jit++/interpreting/group_3.h \
-	jit++/interpreting/group_4.h \
-	jit++/interpreting/group_5.h \
-	jit++/interpreting/group_7.h \
-	jit++/interpreting/impl.h \
 	jit++/interpreting/locked.h \
-	jit++/interpreting/misc.h \
-	jit++/interpreting/tracer.h
+	jit++/interpreting/traits.h
 
 nobase_include_HEADERS = \
         jit++.h \
@@ -59,14 +53,16 @@ libjit___la_SOURCES = \
 	jit++/interpreting/decoder.cc \
 	jit++/interpreting/flags.cc \
 	jit++/interpreting/group_1.cc \
-	jit++/interpreting/impl.cc \
-	jit++/interpreting/tracer.cc \
+	jit++/interpreting/run.cc \
 	jit++/interpreting/misc.cc \
 	jit++/interpreting/tracer_start.S
 
 # test suite
 # noinst_PROGRAMS = test_suite test_interpreter
 noinst_PROGRAMS = test_interpreter
+EXTRA_PROGRAMS = bench_interpreter
+bench_interpreter_SOURCES = test/bench_interpreter.cc
+bench_interpreter_LDADD = libjit++.la $(PTHREAD_LIBS)
 check_PROGRAMS = test_roundtrip
 TESTS = test_roundtrip test_interpreter
 test_roundtrip_SOURCES = test/t_roundtrip.cc test/roundtrip.S
@@ -90,7 +86,7 @@ super-clean: maintainer-clean-local
 	rm -rf ./configure config.log config/config.h config.status Makefile Makefile.in ChangeLog
 
 # darcs support
-EXTRA_DIST = bin/autogen.sh bin/build-udis86.sh
+EXTRA_DIST = bin/autogen.sh bin/build-udis86.sh CMakeLists.txt jitpp.ccm cmake/config.h.in
 
 ChangeLog: _darcs
 	echo "Automatically generated from 'darcs changes' by 'make ChangeLog'" > ChangeLog

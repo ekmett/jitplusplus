@@ -1,6 +1,26 @@
 name: Build and test
 on: [push, pull_request]
 jobs:
+  modules:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 clang-tools-19 ninja-build autoconf automake libtool git python3 libgoogle-glog-dev libgflags-dev
+          python3 -m pip install 'cmake>=3.30,<4'
+      - name: Build diagnostic disassembler
+        run: sh bin/build-udis86.sh "$RUNNER_TEMP/udis86"
+      - name: Build and test module
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-19 \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/udis86"
+          cmake --build build
+          ctest --test-dir build --output-on-failure
   linux:
     runs-on: ubuntu-22.04
     strategy:

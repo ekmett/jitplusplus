@@ -24,6 +24,7 @@
 /bin/test-driver
 /test_interpreter
 /test_roundtrip
+/bench_interpreter
 /test-suite.log
 /test_interpreter.log
 /test_interpreter.trs

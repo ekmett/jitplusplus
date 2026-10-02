@@ -1,37 +1,19 @@
-#include <jit++/common.h>
-#include <jit++/interpreting/base.h>
-#include <jit++/interpreting/group_1.h>
-#include <jit++/interpreting/group_2.h>
-#include <jit++/interpreting/group_3.h>
-#include <jit++/interpreting/group_4.h>
-#include <jit++/interpreting/group_5.h>
-#include <jit++/interpreting/group_6.h>
-#include <jit++/interpreting/group_7.h>
-#include <jit++/interpreting/misc.h>
+#ifndef INCLUDED_JITPP_INTERPRETING_OPCODE_H
+#define INCLUDED_JITPP_INTERPRETING_OPCODE_H
 
-namespace jitpp { 
-  namespace interpreting { 
- 
-class opcode_interpreter
- : public virtual group_1, 
-   public virtual group_2,
-   public virtual group_3,
-   public virtual group_4, 
-   public virtual group_5,
-   public virtual group_6,
-   public virtual group_7,
-   public virtual misc {
+#include <jit++/interpreter.h>
 
-public:
-    template <typename os> 
-    void interpret_opcode() { 
+namespace jitpp {
+
+    template <typename os>
+    inline void interpreter::interpret_opcode() {
         typedef int8_t b;
         typedef int16_t w;
         typedef int32_t d;
         typedef typename os::v v;
         typedef typename os::z z;
-    
-        switch (code) { 
+
+        switch (code) {
         case 0x00: E<b>(add(E<b>(),G<b>())); return;    // ADD Eb, Gb
         case 0x01: E<v>(add(E<v>(),G<v>())); return;    // ADD Ev, Gv
         case 0x02: G<b>(add(G<b>(),E<b>())); return;    // ADD Gb, Eb
@@ -125,8 +107,8 @@ public:
         case 0x83: interpret_group_1<v>(imm); return; // group #1 Ev, Ib
         case 0x84: and_(E<b>(),G<b>()); return; // TEST Eb, Gb
         case 0x85: and_(E<v>(),G<v>()); return; // TEST Ev, Gv
-	case 0x86: xchg<b>(); return; // XCHG Eb,Gb
-	case 0x87: xchg<v>(); return; // XCHG Ev,Gv
+    case 0x86: xchg<b>(); return; // XCHG Eb,Gb
+    case 0x87: xchg<v>(); return; // XCHG Ev,Gv
         case 0x88: E<b>(G<b>()); return; // MOV Eb,Gb
         case 0x89: E<v>(G<v>()); return; // MOV Ev,Gv
         case 0x8a: G<b>(E<b>()); return; // MOV Gb,Eb
@@ -139,37 +121,37 @@ public:
             E<v>(pop<v>());
             return;
         case 0x90: asm("pause"); return; // PAUSE (NOP 90)
-	case 0x91 ... 0x97: // XCHG rXX, rAX
-	    xchg<v>(rex_b(code & 7)); return;
-	case 0x98: // CBW, CWDE,CDQE (sign extend one size, staying in reg 1)
-	    set_reg<v>(0,get_reg<typename os::smaller_size>(0));
-	    return;
-	case 0x99: // CWD, CDQ, CQO (copy sign bit in rAX to all bits of rDX)
-	    set_reg<v>(2,get_reg<v>(0) < 0 ? -1 : 0);
-	    return;
+    case 0x91 ... 0x97: // XCHG rXX, rAX
+        xchg<v>(rex_b(code & 7)); return;
+    case 0x98: // CBW, CWDE,CDQE (sign extend one size, staying in reg 1)
+        set_reg<v>(0,get_reg<typename os::smaller_size>(0));
+        return;
+    case 0x99: // CWD, CDQ, CQO (copy sign bit in rAX to all bits of rDX)
+        set_reg<v>(2,get_reg<v>(0) < 0 ? -1 : 0);
+        return;
         case 0x9a: illegal(); // CALL Ap
-	case 0x9b: unsupported(); // WAIT, FWAIT
-	case 0x9c: push<v>(rflags()); return; // PUSHF
-	case 0x9d: rflags() = pop<v>(); return; // POPF
+    case 0x9b: unsupported(); // WAIT, FWAIT
+    case 0x9c: push<v>(rflags()); return; // PUSHF
+    case 0x9d: rflags() = pop<v>(); return; // POPF
         case 0x9e: // SAHF if CPUID.AHF = 1
-            rflags() = (rflags() & ~0xff) | ah(); 
+            rflags() = (rflags() & ~0xff) | ah();
             return;
         case 0x9f: // LAHF if CPUID.AHF = 1
             ah() = static_cast<uint8_t>(rflags() & 0xff);
             return;
-	case 0xa4: movs<b>(); return; // REP? MOVSB
-	case 0xa5: movs<v>(); return; // REP? MOVS[WDQ]
-	case 0xa8: and_(al(),imm); return; // TEST AL, Ib
-	case 0xa9: and_(get_reg<v>(0),imm); return; // TEST rAX, Iz
-	case 0xb0 ... 0xb7: // MOV RXXB, Ib
-	    set_reg<b>(rex_b(code & 7),imm);
-            return; 
+    case 0xa4: movs<b>(); return; // REP? MOVSB
+    case 0xa5: movs<v>(); return; // REP? MOVS[WDQ]
+    case 0xa8: and_(al(),imm); return; // TEST AL, Ib
+    case 0xa9: and_(get_reg<v>(0),imm); return; // TEST rAX, Iz
+    case 0xb0 ... 0xb7: // MOV RXXB, Ib
+        set_reg<b>(rex_b(code & 7),imm);
+            return;
         case 0xb8 ... 0xbf: // MOV RXX, Iq
             set_reg<v>(rex_b(code & 7),imm);
             return;
         case 0xc0: interpret_group_2<b>(imm); return; // group 2 Eb, Ib
         case 0xc1: interpret_group_2<v>(imm); return; // group 2 Ev, Ib
-	case 0xc2: rip() = pop<v>(); rsp() += sizeof(v)*imm; return; // RET (Near) Iw
+    case 0xc2: rip() = pop<v>(); rsp() += sizeof(v)*imm; return; // RET (Near) Iw
         case 0xc3: rip() = pop<v>(); return; // RET (Near)
         case 0xc4: illegal(); // LES Gz,Mp
         case 0xc5: illegal(); // LDS Gz,Mp
@@ -181,16 +163,16 @@ public:
             if (reg != 0) illegal();
             E<v>(imm);
             return;
-	case 0xc9: // LEAVE
-	    rsp() = rbp();
-	    rbp() = pop<v>();
+    case 0xc9: // LEAVE
+        rsp() = rbp();
+        rbp() = pop<v>();
             return;
-	case 0xcc: unsupported(); // INT3
+    case 0xcc: unsupported(); // INT3
         case 0xce: illegal(); // INTO
-	case 0xd0: interpret_group_2<b>(1); return; // group 2 Eb, 1
-	case 0xd1: interpret_group_2<v>(1); return; // group 2 Ev, 1
-	case 0xd2: interpret_group_2<b>(cl()); return; // group 2 Eb, CL
-	case 0xd3: interpret_group_2<v>(cl()); return; // group 2 Ev, CL
+    case 0xd0: interpret_group_2<b>(1); return; // group 2 Eb, 1
+    case 0xd1: interpret_group_2<v>(1); return; // group 2 Ev, 1
+    case 0xd2: interpret_group_2<b>(cl()); return; // group 2 Eb, CL
+    case 0xd3: interpret_group_2<v>(cl()); return; // group 2 Ev, CL
         case 0xd4: illegal(); // AAM Ib
         case 0xd5: illegal(); // AAD Ib
         case 0xd6: illegal(); // SALC
@@ -212,26 +194,26 @@ public:
         case 0xfd: df(true); return; // STD
         case 0xfe: interpret_group_4<b>(); return; // group 4 Eb
         case 0xff: interpret_group_5<v>(); return; // group 5 Ev
-	case 0x100: interpret_group_6<os>(); return; // group 6
-	case 0x101: interpret_group_7<os>(); return; // group 7
-	case 0x102: G<v>(lar(E<w>())); return; // LAR Gv, Ew
-	case 0x103: G<v>(lsl(E<w>())); return; // LSL Gv, Ew
-	case 0x110 ... 0x113: uninterpretable(); // UMOV 
-	case 0x105: syscall_(); return; // SYSCALL (wrapped above)
-	case 0x106: uninterpretable(); // CLTS 
-	case 0x107: uninterpretable(); // SYSRET 
-	case 0x108: invd(); return;
-	case 0x109: wbinvd(); return;
+    case 0x100: interpret_group_6<os>(); return; // group 6
+    case 0x101: interpret_group_7<os>(); return; // group 7
+    case 0x102: G<v>(lar(E<w>())); return; // LAR Gv, Ew
+    case 0x103: G<v>(lsl(E<w>())); return; // LSL Gv, Ew
+    case 0x110 ... 0x113: uninterpretable(); // UMOV
+    case 0x105: syscall_(); return; // SYSCALL (wrapped above)
+    case 0x106: uninterpretable(); // CLTS
+    case 0x107: uninterpretable(); // SYSRET
+    case 0x108: invd(); return;
+    case 0x109: wbinvd(); return;
         case 0x10b: illegal(); // UD2
         case 0x118 ... 0x11f: return; // PREFETCH M, NOP Ev and HINT NOP Ev
         case 0x120: unsupported(); // MOV Rd,Cd
         case 0x121: unsupported(); // MOV Rd,Dd
         case 0x122: unsupported(); // MOV Cd,Rd
         case 0x123: unsupported(); // MOV Dd,Rd
-	case 0x130: wrmsr(); return;
-	case 0x131: rdtsc(); return;
-	case 0x132: rdmsr(); return;
-	case 0x133: rdpmc(); return;
+    case 0x130: wrmsr(); return;
+    case 0x131: rdtsc(); return;
+    case 0x132: rdmsr(); return;
+    case 0x133: rdpmc(); return;
         case 0x134: unsupported(); // SYSENTER (illegal on AMD64, legal on EMT64?, unrecognized by udis86)
         case 0x135: unsupported(); // SYSEXIT (illegal on AMD64, legal on EMT64)
         case 0x140 ... 0x14f: // CMOVcc Gv,Ev
@@ -243,12 +225,12 @@ public:
         case 0x190 ... 0x19f: // SETcc Eb
             E<b>(test_cc(code & 0xf));
             return;
-        case 0x1a0: unsupported(); // push<v>(i,fs()); return i; // PUSH FS 
+        case 0x1a0: unsupported(); // push<v>(i,fs()); return i; // PUSH FS
         case 0x1a8: unsupported(); // push<v>(i,gs()); return i; // PUSH GS
         case 0x1a1: unsupported(); // fs(pop<v>(i)); return i;  // POP FS
         case 0x1a9: unsupported(); // gs(pop<v>(i)); return i;  // POP GS
-	case 0x1ac: E<v>(shrd<v>(E<v>(), G<v>(), imm)); return;  // SHRD Ev,Gv,Ib
-	case 0x1ad: E<v>(shrd<v>(E<v>(), G<v>(), cl())); return; // SHRD Ev,Gv,CL
+    case 0x1ac: E<v>(shrd<v>(E<v>(), G<v>(), imm)); return;  // SHRD Ev,Gv,Ib
+    case 0x1ad: E<v>(shrd<v>(E<v>(), G<v>(), cl())); return; // SHRD Ev,Gv,CL
         case 0x1b0: cmpxchg<b>(); return; // CMPXCHG Eb,Gb
         case 0x1b1: cmpxchg<v>(); return; // CMPXCHG Ev,Gv
         case 0x1b6: G<v>(static_cast<uint64_t>(static_cast<uint8_t>(E<b>()))); return; // MOVZX Gv, Eb
@@ -256,10 +238,10 @@ public:
         case 0x1b9: illegal(); // UD1
         case 0x1ff: illegal(); // UD0
         default: break;
-        } 
+        }
         unsupported();
-    } // interpreter_impl::interpret_opcode<T>
-}; // class opcode_interpreter
-    
-} // namespace interpreting
+    } // interpreter::interpret_opcode<T>
+
 } // namespace jitpp
+
+#endif // INCLUDED_JITPP_INTERPRETING_OPCODE_H

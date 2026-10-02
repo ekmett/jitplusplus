@@ -22,10 +22,10 @@
 
     .text
     .align 16
-    .globl _ZN5jitpp6tracer5startEv
-    .type  _ZN5jitpp6tracer5startEv, @function
-    /* namespace jitpp { class interpreter { virtual void run() = 0; ...; void NOTHROW start(); }; }  */
-_ZN5jitpp6tracer5startEv:
+    .globl _ZN5jitpp11interpreter5startEv
+    .type  _ZN5jitpp11interpreter5startEv, @function
+    /* jitpp::interpreter::start(); class declaration belongs to the global module. */
+_ZN5jitpp11interpreter5startEv:
     movq %r12, REG_OFFSET_R12(%rdi)
     movq %r13, REG_OFFSET_R13(%rdi)
     movq %r14, REG_OFFSET_R14(%rdi)
@@ -39,7 +39,7 @@ _ZN5jitpp6tracer5startEv:
     /* save instruction pointer that this call would return to */
     mov 0(%rsp), %rax
     movq %rax, REG_OFFSET_RIP(%rdi)
-    
+
     /* save off the stack pointer minus the overhead for this call. */
     leaq 8(%rsp), %rax
     movq %rax, REG_OFFSET_RSP(%rdi)
@@ -57,17 +57,16 @@ _ZN5jitpp6tracer5startEv:
 
     /* callee retains 'this' for us in r15 */
     movq %rdi, %r15
-    movq (%rdi), %r13 /* virtual run() */
-    call *(%r13)
+    call _ZN5jitpp11interpreter4stubEv@PLT
     mov %r15, %rdi
     /* fall through */
 
-    /* Internal fallthrough, not the C++ tracer::stop() flag setter. */
+    /* Internal fallthrough, not the C++ interpreter::stop() flag setter. */
 .Lrestore_native:
     fxrstor FXREGS_OFFSET(%rdi)
 
     movq %ss, %rax
-    pushq %rax 	                   /* target ss */
+    pushq %rax                     /* target ss */
     pushq REG_OFFSET_RSP(%rdi)     /* target rsp */
     pushq REG_OFFSET_RFLAGS(%rdi)  /* target rflags */
     movq %cs, %rax

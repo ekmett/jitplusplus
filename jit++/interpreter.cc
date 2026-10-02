@@ -1,9 +1,60 @@
+#include <string.h> // memset
+#include <pthread.h>
+#include <jit++/common.h> // DEFINE_*
 #include <jit++/interpreter.h>
-#include <jit++/interpreting/impl.h>
 
-namespace jitpp { 
-    interpreter::interpreter() : impl(new interpreter_impl()) {}
-    void interpreter::start() { impl->start(); } 
-    void interpreter::stop() { impl->stop(); } 
-    interpreter::~interpreter() { delete impl; } 
-}
+DEFINE_uint64(jitpp_default_stack_size, 16384,
+              "the default stack size for tracing. If too small then deep recursion or sparse "
+              "allocas will fail to trace.");
+
+namespace {
+    void *call_tracer_run(void *t) {
+        static_cast<jitpp::interpreter *>(t)->run();
+        return 0; // this could return the function pointer to execute on subsequent runs
+    }
+} // namespace
+
+namespace jitpp {
+    size_t interpreter::default_stack_size() { return FLAGS_jitpp_default_stack_size; }
+
+    interpreter::interpreter(size_t stack_size)
+        : m_stack_size(stack_size), m_handler(0), m_lazy_flags(0) {
+        for (int i = 0; i < 16; ++i) {
+            m_reg[i] = 0xbad0 + i;
+        }
+    }
+
+    interpreter::~interpreter() {}
+
+    // executed far down the stack of the to-be-interpreted thread
+    void interpreter::stub() {
+        pthread_t thread;
+        pthread_attr_t attr;
+        size_t stack_size;
+
+        pthread_attr_init(&attr);
+        // The default accommodates modern libraries' thread-local storage.
+        pthread_attr_getstacksize(&attr, &stack_size);
+    retry:
+        int result = pthread_create(&thread, &attr, &call_tracer_run, this);
+        switch (result) {
+        case EAGAIN:
+            goto retry; // transient fault
+        case EINVAL:
+            LOG(DFATAL) << "stack size attribute invalid (stack_size = " << stack_size << ")";
+            break; // don't jit
+        case EPERM:
+            LOG(DFATAL) << "unable to create pthread (EPERM)";
+            break; // don't jit
+        default:
+            LOG(DFATAL) << "unexpected error (" << result << ")";
+            break;
+            // fall through
+        case 0:
+            pthread_join(thread, 0);
+            break;
+        }
+        pthread_attr_destroy(&attr);
+    }
+
+} // namespace jitpp

@@ -3,6 +3,44 @@ jit++ is a cooperative tracing jit written in c++ that compiles x86-64 assembly 
 (c) 2008 Edward Kmett
 All Rights Reserved
 
+Single-module build (Linux x86-64)
+=================================
+
+The C++26 interface is one named module, jitpp. It exports jitpp::interpreter
+and jitpp::application. The interpreter is a single concrete class. Its
+declaration belongs to the global module fragment, preserving the C++ symbols
+used by the assembly trampoline; the module exports it with a using-declaration,
+following native's native.isa provider pattern.
+
+Use CMake 3.30 or newer, Ninja, and Clang 19 or newer with its matching
+clang-scan-deps (packaged as clang-tools-19 on Debian/Ubuntu). Clang 19 is tested.
+Install glog, gflags, and udis86 as described below, then:
+
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="$PWD/build-deps"
+    cmake --build build
+    ctest --test-dir build --output-on-failure
+
+Use -DCMAKE_BUILD_TYPE=Debug for an unoptimized build. CMake generates its own
+configuration header; running Autotools first is unnecessary. Exceptions stay
+enabled because unsupported instructions use them to return to native execution.
+
+An enclosing CMake project can consume the module with:
+
+    add_subdirectory(path/to/jitplusplus)
+    add_executable(example main.cc)
+    set_target_properties(example PROPERTIES CXX_EXTENSIONS OFF)
+    target_link_libraries(example PRIVATE jitpp::jitpp)
+
+Then main.cc can use `import jitpp;` without including jit++ headers. CMake
+builds the module and propagates the C++26 requirement. Consumers must match
+the provider's strict C++ mode (CXX_EXTENSIONS OFF). The module build runs
+the same round-trip and demo tests as the header build. To run its benchmark:
+
+    cmake --build build --target bench_interpreter
+    ./build/bench_interpreter
+
 Third-Party Dependencies:
 
 udis86				-- use for debugging assembly 
@@ -50,6 +88,20 @@ step-limited exit, and unsupported-instruction fallback. The assertions remain
 active in optimized builds. For instruction logging:
 
     ./test_interpreter --logtostderr --v=1
+
+The concrete interpreter owns its registers, decoder, flags, and instruction
+methods directly, with no inheritance, virtual dispatch, or PIMPL allocation.
+Compile-time layout checks pin the offsets consumed by assembly. The round-trip
+test inspects saved execution state and exercises arithmetic and locked memory
+operations across the instruction groups.
+
+To measure dispatch/state-access throughput without worker-thread startup:
+
+    make bench_interpreter
+    ./bench_interpreter
+
+The benchmark reports the median of nine runs of a million-iteration add/dec/jnz
+loop. Use the same optimized build flags and logging settings when comparing runs.
 
 The original design still uses a worker pthread and a fixed gap on the caller's
 stack. Instruction coverage, syscall/TLS behavior, and extended vector state are
