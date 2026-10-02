@@ -1,10 +1,12 @@
+#include <cstring>
 #include <iostream>
 #include <jit++/common.h>
 #include <jit++/interpreter.h>
 
 namespace {
     template <typename T> T fetch(int64_t &i) {
-        T result = *reinterpret_cast<const T *>(i);
+        T result;
+        std::memcpy(&result, reinterpret_cast<const void *>(i), sizeof result);
         i += sizeof(result);
         return result;
     }
