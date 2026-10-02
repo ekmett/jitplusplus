@@ -4,7 +4,9 @@
 lives beside the decoder state, prefix helpers, and `parse()`. It describes byte layout for the primary and `0F`
 opcode maps in 64-bit mode. Its 512 entries use Clang's GNU array/range
 initializers, with named recipes for opcode families. Unspecified entries are
-zero; the runtime performs one indexed lookup.
+zero; the runtime performs one indexed lookup. A `consteval` initializer lambda
+returns the `constexpr std::array<uint8_t, 512>`, keeping the recipe names local
+to the initializer rather than adding class members.
 
 ```cpp
 [0x00 ... 0x03] = MR, [0x04] = B, [0x05] = Z, // ADD

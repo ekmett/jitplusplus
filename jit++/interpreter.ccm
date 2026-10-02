@@ -1,5 +1,6 @@
 module;
 #include <jit++/config.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -726,97 +727,99 @@ namespace jitpp {
         static const uint8_t encoding_Iv = 0x05;   // z,w,q as appropriate to size
         static const uint8_t encoding_hard = 0x06; // handle opcode by opcode hard code
 
-        // Recipes describe bytes to consume, not whether execution is supported.
-        enum : uint8_t {
-            MR = encoding_has_modrm,
-            B = encoding_Ib,
-            Z = encoding_Iz,
-            D = encoding_default_os_64,
-            H = encoding_hard
-        };
         // Clang accepts GNU array/range designators in C++; keep overlap warnings enabled.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc99-designator"
         // clang-format off
-        static inline constexpr uint8_t encoding_lut[512] = {
-            // Primary map: arithmetic families, stack operations, branches and moves.
-            [0x00 ... 0x03] = MR, [0x04] = B, [0x05] = Z, // ADD
-            [0x08 ... 0x0b] = MR, [0x0c] = B, [0x0d] = Z, // OR
-            [0x10 ... 0x13] = MR, [0x14] = B, [0x15] = Z, // ADC
-            [0x18 ... 0x1b] = MR, [0x1c] = B, [0x1d] = Z, // SBB
-            [0x20 ... 0x23] = MR, [0x24] = B, [0x25] = Z, // AND
-            [0x28 ... 0x2b] = MR, [0x2c] = B, [0x2d] = Z, // SUB
-            [0x30 ... 0x33] = MR, [0x34] = B, [0x35] = Z, // XOR
-            [0x38 ... 0x3b] = MR, [0x3c] = B, [0x3d] = Z, // CMP
-            [0x50 ... 0x5f] = D,
-            [0x63] = MR,
-            [0x68] = D | Z,
-            [0x69] = MR | Z,
-            [0x6a] = D | B,
-            [0x6b] = MR | B,
-            [0x70 ... 0x7f] = B,
-            [0x80] = MR | B,
-            [0x81] = MR | Z,
-            [0x82 ... 0x83] = MR | B,
-            [0x84 ... 0x8e] = MR,
-            [0x8f] = MR | D,
-            [0x9c ... 0x9d] = D,
-            [0xa0 ... 0xa3] = H, // moffs follows address size, not operand size
-            [0xa8] = B,
-            [0xa9] = Z,
-            [0xb0 ... 0xb7] = B,
-            [0xb8 ... 0xbf] = encoding_Iv,
-            [0xc0 ... 0xc1] = MR | B,
-            [0xc2] = D | encoding_Iw,
-            [0xc3] = D,
-            [0xc6] = MR | B,
-            [0xc7] = MR | Z,
-            [0xc8] = D | encoding_IwIb,
-            [0xc9] = D,
-            [0xca] = encoding_Iw,
-            [0xcd] = B,
-            [0xd0 ... 0xd3] = MR,
-            [0xd4 ... 0xd5] = B,
-            [0xd8 ... 0xdf] = MR,
-            [0xe0 ... 0xe7] = B,
-            [0xe8 ... 0xe9] = D | Z,
-            [0xeb] = B,
-            [0xf6 ... 0xf7] = MR | H, // only TEST in group 3 has an immediate
-            [0xfe] = MR,
-            [0xff] = MR | D, // group 5 selects the default width in parse()
+        static inline constexpr auto encoding_lut = [] consteval {
+            // Recipes describe bytes to consume, not whether execution is supported.
+            enum : uint8_t {
+                MR = encoding_has_modrm,
+                B = encoding_Ib,
+                Z = encoding_Iz,
+                D = encoding_default_os_64,
+                H = encoding_hard
+            };
+            return std::array<uint8_t, 512>{{
+                // Primary map: arithmetic families, stack operations, branches and moves.
+                [0x00 ... 0x03] = MR, [0x04] = B, [0x05] = Z, // ADD
+                [0x08 ... 0x0b] = MR, [0x0c] = B, [0x0d] = Z, // OR
+                [0x10 ... 0x13] = MR, [0x14] = B, [0x15] = Z, // ADC
+                [0x18 ... 0x1b] = MR, [0x1c] = B, [0x1d] = Z, // SBB
+                [0x20 ... 0x23] = MR, [0x24] = B, [0x25] = Z, // AND
+                [0x28 ... 0x2b] = MR, [0x2c] = B, [0x2d] = Z, // SUB
+                [0x30 ... 0x33] = MR, [0x34] = B, [0x35] = Z, // XOR
+                [0x38 ... 0x3b] = MR, [0x3c] = B, [0x3d] = Z, // CMP
+                [0x50 ... 0x5f] = D,
+                [0x63] = MR,
+                [0x68] = D | Z,
+                [0x69] = MR | Z,
+                [0x6a] = D | B,
+                [0x6b] = MR | B,
+                [0x70 ... 0x7f] = B,
+                [0x80] = MR | B,
+                [0x81] = MR | Z,
+                [0x82 ... 0x83] = MR | B,
+                [0x84 ... 0x8e] = MR,
+                [0x8f] = MR | D,
+                [0x9c ... 0x9d] = D,
+                [0xa0 ... 0xa3] = H, // moffs follows address size, not operand size
+                [0xa8] = B,
+                [0xa9] = Z,
+                [0xb0 ... 0xb7] = B,
+                [0xb8 ... 0xbf] = encoding_Iv,
+                [0xc0 ... 0xc1] = MR | B,
+                [0xc2] = D | encoding_Iw,
+                [0xc3] = D,
+                [0xc6] = MR | B,
+                [0xc7] = MR | Z,
+                [0xc8] = D | encoding_IwIb,
+                [0xc9] = D,
+                [0xca] = encoding_Iw,
+                [0xcd] = B,
+                [0xd0 ... 0xd3] = MR,
+                [0xd4 ... 0xd5] = B,
+                [0xd8 ... 0xdf] = MR,
+                [0xe0 ... 0xe7] = B,
+                [0xe8 ... 0xe9] = D | Z,
+                [0xeb] = B,
+                [0xf6 ... 0xf7] = MR | H, // only TEST in group 3 has an immediate
+                [0xfe] = MR,
+                [0xff] = MR | D, // group 5 selects the default width in parse()
 
-            // 0F map: system, SIMD and integer instruction families.
-            [0x100 ... 0x103] = MR,
-            [0x10d] = MR,
-            [0x10f] = MR | B, // 3DNow's trailing opcode byte
-            [0x110 ... 0x123] = MR,
-            [0x128 ... 0x12f] = MR,
-            [0x138] = MR | encoding_extra_byte,
-            [0x13a] = MR | encoding_extra_byte | B,
-            [0x140 ... 0x16f] = MR,
-            [0x170 ... 0x173] = MR | B,
-            [0x174 ... 0x176] = MR,
-            [0x178] = MR | H, // SSE4a 66/F2 forms have two immediate bytes
-            [0x179] = MR,
-            [0x17c ... 0x17f] = MR,
-            [0x180 ... 0x18f] = Z,
-            [0x190 ... 0x19f] = MR,
-            [0x1a3] = MR,
-            [0x1a4] = MR | B,
-            [0x1a5 ... 0x1a7] = MR,
-            [0x1ab] = MR,
-            [0x1ac] = MR | B,
-            [0x1ad ... 0x1af] = MR,
-            [0x1b0 ... 0x1b9] = MR,
-            [0x1ba] = MR | B,
-            [0x1bb ... 0x1bf] = MR,
-            [0x1c0 ... 0x1c1] = MR,
-            [0x1c2] = MR | B,
-            [0x1c3] = MR,
-            [0x1c4 ... 0x1c6] = MR | B,
-            [0x1c7] = MR,
-            [0x1d0 ... 0x1ff] = MR,
-        };
+                // 0F map: system, SIMD and integer instruction families.
+                [0x100 ... 0x103] = MR,
+                [0x10d] = MR,
+                [0x10f] = MR | B, // 3DNow's trailing opcode byte
+                [0x110 ... 0x123] = MR,
+                [0x128 ... 0x12f] = MR,
+                [0x138] = MR | encoding_extra_byte,
+                [0x13a] = MR | encoding_extra_byte | B,
+                [0x140 ... 0x16f] = MR,
+                [0x170 ... 0x173] = MR | B,
+                [0x174 ... 0x176] = MR,
+                [0x178] = MR | H, // SSE4a 66/F2 forms have two immediate bytes
+                [0x179] = MR,
+                [0x17c ... 0x17f] = MR,
+                [0x180 ... 0x18f] = Z,
+                [0x190 ... 0x19f] = MR,
+                [0x1a3] = MR,
+                [0x1a4] = MR | B,
+                [0x1a5 ... 0x1a7] = MR,
+                [0x1ab] = MR,
+                [0x1ac] = MR | B,
+                [0x1ad ... 0x1af] = MR,
+                [0x1b0 ... 0x1b9] = MR,
+                [0x1ba] = MR | B,
+                [0x1bb ... 0x1bf] = MR,
+                [0x1c0 ... 0x1c1] = MR,
+                [0x1c2] = MR | B,
+                [0x1c3] = MR,
+                [0x1c4 ... 0x1c6] = MR | B,
+                [0x1c7] = MR,
+                [0x1d0 ... 0x1ff] = MR,
+            }};
+        }();
         // clang-format on
 #pragma clang diagnostic pop
 
