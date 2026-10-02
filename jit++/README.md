@@ -1,34 +1,51 @@
 # Source and definition ownership
 
-`jitpp` is the sole module export provider. It exports `application` and
-`interpreter`; supporting headers are textual implementation inputs. Ordinary
-translation units use `.cc`, assembly uses `.S`, and the interface uses `.ccm`.
+`jitpp` is the sole public module. Its primary interface re-exports two interface
+partitions; application code still writes only `import jitpp;`. Declarations and
+implementations live together in `.ccm` files, without a project header layer.
 
 | Source | Responsibility |
 | --- | --- |
-| `../jitpp.ccm` | Public module and global-fragment exports |
-| `interpreter.h` | Concrete interpreter state and inline instruction methods |
-| `interpreter.cc` | Construction and worker-thread entry |
-| `interpreting/tracer_start.S` | Native register capture and resumption |
-| `interpreting/decoder.cc` | Encoding metadata and instruction parsing |
-| `interpreting/run.cc` | Decode/execute loop and fallback |
-| `interpreting/opcode.h`, `interpreting/locked.h` | Instruction dispatch |
-| `interpreting/base.*` | Register/memory access and diagnostics |
-| `interpreting/flags.*`, `interpreting/traits.h` | Lazy flags and operand traits |
-| `application.*` | Runtime logging and option initialization |
+| [../jitpp.ccm](../jitpp.ccm) | Public module, re-exporting the two API partitions |
+| [interpreter.ccm](interpreter.ccm) | Saved state, decoding, instruction execution, flags, diagnostics, and worker entry |
+| [application.ccm](application.ccm) | Runtime logging and option initialization |
+| [interpreting/tracer_start.S](interpreting/tracer_start.S) | Native register capture and resumption |
+| [memory.ccm](memory.ccm) | Historical memory-permission and locking support, in an unimported internal partition |
+
+## Finding interpreter code
+
+`interpreter.ccm` starts with the exception, flag, and operand-size helpers.
+The concrete class follows, with method bodies in its definition. Its sections
+cover entry and execution, saved state, lazy flags, decoding, register/memory
+access, instruction groups, miscellaneous instructions, and dispatch.
+
+The decoder's state, prefix helpers, recipe constants, `encoding_lut`, and
+`parse()` form one contiguous section. The [decoder guide](../docs/decoding.md)
+describes the table and its validation boundary. Template specializations live
+beside their primary declarations rather than in separate implementation headers.
 
 ## Module ownership and assembly
 
-The interface includes the interpreter declaration in its global module
-fragment, then exports namespace using-declarations. This follows `native.isa`'s
-provider pattern: declarations retain their global ownership and C++ linkage.
-Assembly can reference `interpreter::start()` and `interpreter::stub()` directly.
-There is no C bridge or separately allocated implementation object.
+The interpreter and its supporting definitions are written directly in the
+global module fragment, above `export module jitpp:interpreter;`. The partition
+then exports the class with `using ::jitpp::interpreter;`, following the global
+ownership/provider pattern used by `native`.
+
+This preserves the C++ symbols referenced by assembly: `interpreter::start()`
+and `interpreter::stub()`. `stub()` has an out-of-class definition in the same
+file so the compiler emits the symbol called by assembly. There is no C bridge
+or separately allocated implementation object. System and dependency headers
+also remain in the global fragment.
 
 The concrete class is standard-layout. Static assertions pin the offsets used
 by assembly for registers, instruction pointer, flags, floating-point state and
 stack bookkeeping. Layout changes must update the assembly and these assertions
-together. System and dependency headers also remain in the global fragment.
+together.
+
+`application` needs no assembly linkage and is defined directly in its named
+module partition. The old memory-permission subsystem is not part of the exported
+API or interpreter execution path. Its separate, unimported archive object keeps
+its historical singleton initialization out of ordinary module consumers.
 
 ## Execution
 
@@ -42,5 +59,3 @@ RIP to the start of that instruction and materializes lazy flags before the
 assembly exit resumes native execution. A successful stop also materializes
 flags. Instruction implementations must avoid partial state changes before
 requesting fallback.
-
-The [decoder guide](../docs/decoding.md) describes the metadata boundary.

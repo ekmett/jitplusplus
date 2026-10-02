@@ -1,0 +1,27 @@
+module;
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+
+export module jitpp:application;
+
+export namespace jitpp {
+    class application {
+        static inline bool initialized = false;
+
+      public:
+        application() {}
+        application(int &argc, char **&argv, bool remove_flags = true) {
+            init(argc, argv, remove_flags);
+        }
+        void init(int &argc, char **&argv, bool remove_flags = true) {
+            if (!initialized) {
+                initialized = true;
+                google::ParseCommandLineFlags(&argc, &argv, true);
+                google::InitGoogleLogging(argv[0]);
+            } else {
+                LOG(DFATAL) << "Multiple initialization attempts";
+            }
+        }
+        ~application() {}
+    };
+} // namespace jitpp

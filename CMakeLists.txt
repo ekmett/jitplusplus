@@ -15,23 +15,19 @@ find_library(UDIS86_LIBRARY udis86 REQUIRED)
 configure_file(cmake/config.h.in generated/jit++/config.h COPYONLY)
 
 add_library(jitpp STATIC
-    jit++/application.cc
-    jit++/interpreter.cc
-    jit++/exceptions.cc
-    jit++/memory.cc
-    jit++/mutex.cc
-    jit++/interpreting/base.cc
-    jit++/interpreting/decoder.cc
-    jit++/interpreting/flags.cc
-    jit++/interpreting/group_1.cc
-    jit++/interpreting/run.cc
-    jit++/interpreting/misc.cc
     jit++/interpreting/tracer_start.S
 )
 add_library(jitpp::jitpp ALIAS jitpp)
 target_compile_features(jitpp PUBLIC cxx_std_26)
 set_target_properties(jitpp PROPERTIES CXX_EXTENSIONS OFF CXX_SCAN_FOR_MODULES ON)
-target_sources(jitpp PUBLIC FILE_SET CXX_MODULES FILES jitpp.ccm)
+target_sources(jitpp PUBLIC FILE_SET CXX_MODULES FILES
+    jitpp.ccm
+    jit++/application.ccm
+    jit++/interpreter.ccm
+)
+target_sources(jitpp PRIVATE FILE_SET internal_modules TYPE CXX_MODULES FILES
+    jit++/memory.ccm
+)
 target_include_directories(jitpp PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
     "${CMAKE_CURRENT_SOURCE_DIR}"

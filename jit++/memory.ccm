@@ -1,0 +1,396 @@
+module;
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <vector>
+#include <pthread.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <glog/logging.h>
+
+namespace jitpp {
+    class move {};
+    class split {};
+} // namespace jitpp
+
+namespace jitpp {
+
+    class native_rw_mutex {
+      public:
+        native_rw_mutex();
+        ~native_rw_mutex();
+        operator pthread_rwlock_t &() { return m_self; }
+        operator const pthread_rwlock_t &() const { return m_self; }
+        static const bool is_rw_mutex = true;
+        static const bool is_fair_mutex = false;
+        static const bool is_recursive_mutex = false;
+        void rdlock();
+        void wrlock();
+        void unlock();
+
+      private:
+        pthread_rwlock_t m_self;
+
+        // disable copy & assignment constructors
+        native_rw_mutex(const native_rw_mutex &);
+        void operator=(const native_rw_mutex &);
+
+      public:
+        class scoped_lock {
+          public:
+            friend void swap(scoped_lock &a, scoped_lock &b) { std::swap(a.m_lock, b.m_lock); }
+            scoped_lock();
+            scoped_lock(scoped_lock &peer, move);
+            scoped_lock(pthread_rwlock_t &lock, bool write = true);
+            ~scoped_lock();
+
+            void acquire(pthread_rwlock_t &lock, bool write = true);
+            void release();
+
+          private:
+            pthread_rwlock_t *m_lock;
+
+            // disable copy & assignment constructors
+            scoped_lock(const scoped_lock &);
+            void operator=(const scoped_lock &);
+        };
+    };
+} // namespace jitpp
+
+namespace jitpp {
+
+    native_rw_mutex::native_rw_mutex() { pthread_rwlock_init(&m_self, 0); }
+
+    native_rw_mutex::~native_rw_mutex() { pthread_rwlock_destroy(&m_self); }
+
+    void native_rw_mutex::rdlock() {
+        CHECK_EQ(pthread_rwlock_rdlock(&m_self), 0) << "read lock failed";
+    }
+    void native_rw_mutex::wrlock() {
+        CHECK_EQ(pthread_rwlock_wrlock(&m_self), 0) << "write lock failed";
+    }
+    void native_rw_mutex::unlock() { pthread_rwlock_unlock(&m_self); }
+
+    native_rw_mutex::scoped_lock::scoped_lock() : m_lock(0) {}
+
+    native_rw_mutex::scoped_lock::scoped_lock(pthread_rwlock_t &lock, bool write) : m_lock(&lock) {
+        if (write)
+            CHECK_EQ(pthread_rwlock_wrlock(m_lock), 0) << "scoped write lock failed";
+        else
+            CHECK_EQ(pthread_rwlock_rdlock(m_lock), 0) << "scoped read lock failed";
+    }
+
+    native_rw_mutex::scoped_lock::scoped_lock(scoped_lock &peer, move) : m_lock(peer.m_lock) {
+        peer.m_lock = 0;
+    }
+
+    native_rw_mutex::scoped_lock::~scoped_lock() {
+        if (m_lock != 0)
+            pthread_rwlock_unlock(m_lock);
+    }
+
+    void native_rw_mutex::scoped_lock::acquire(pthread_rwlock_t &lock, bool write) {
+        if (m_lock != 0)
+            pthread_rwlock_unlock(m_lock);
+
+        m_lock = &lock;
+
+        if (write)
+            CHECK_EQ(pthread_rwlock_wrlock(m_lock), 0) << "scoped write lock acquire failed";
+        else
+            CHECK_EQ(pthread_rwlock_rdlock(m_lock), 0) << "scoped read lock acquire failed";
+    }
+
+    void native_rw_mutex::scoped_lock::release() {
+        if (m_lock != 0)
+            pthread_rwlock_unlock(m_lock);
+        m_lock = 0;
+    }
+
+} // namespace jitpp
+
+// TODO: this has a number of internal details that can be pulled out and made into a class
+// we should template off of that rather than code against these methods directly
+// that would permit a bibop to enforce these constraints on more memory.
+// also could generational gc perhaps give a better approximation of 'const' member lookups?
+
+namespace jitpp {
+    typedef int memory_permissions;
+
+    namespace memory_permission {
+        static const memory_permissions empty = 0;
+        static const memory_permissions read = 1;
+        static const memory_permissions write = 2;
+        static const memory_permissions execute = 4;
+    } // namespace memory_permission
+
+    // forward declaration
+    class memory_permission_model;
+
+    template <typename T = memory_permission_model> class memory_permission_reader {
+      private:
+        T &m_model;
+
+      public:
+        memory_permission_reader(T &model) : m_model(&model) { m_model->rdlock(); }
+        memory_permission_reader(const memory_permission_reader &peer) : m_model(peer.m_model) {
+            m_model->rdlock();
+        }
+        ~memory_permission_reader() { m_model->unlock(); }
+        inline virtual memory_permissions operator[](const void *addr) { return *(m_model)[addr]; }
+        inline bool is_const(const void *addr) {
+            return (*m_model)[addr] & memory_permission::write == 0;
+        }
+        inline bool is_executable(const void *addr) {
+            return (*m_model)[addr] & memory_permission::execute != 0;
+        }
+    };
+
+    class memory_permission_model {
+      protected:
+        virtual memory_permissions operator[](const void *addr) = 0;
+        virtual void rdlock() = 0;
+        virtual void unlock() = 0;
+
+      public:
+        typedef memory_permission_reader<memory_permission_model> reader;
+        friend class memory_permission_reader<memory_permission_model>;
+    };
+
+    // a trivial model that doesn't let you assume anything about memory usage
+    class trivial_memory_permission_model : public memory_permission_model {
+      public:
+        typedef memory_permission_reader<trivial_memory_permission_model> reader;
+        friend class memory_permission_reader<trivial_memory_permission_model>;
+
+        trivial_memory_permission_model() {}
+        trivial_memory_permission_model(const trivial_memory_permission_model &) {}
+        trivial_memory_permission_model &operator=(const trivial_memory_permission_model &) {
+            return *this;
+        }
+
+      protected:
+        inline void rdlock() {}
+        inline void unlock() {}
+        inline virtual memory_permissions operator[](const void *addr) {
+            return memory_permission::read | memory_permission::write | memory_permission::execute;
+        }
+    };
+
+    // this engages in a pleasant fiction. it believes that if you can't mutate a range of memory
+    // then no one else can however, in practice this is usually the case. A counter example would
+    // be that you have two mmaps of the same region of memory one read-only. that doesn't prevent
+    // this from being useful it just says you may need to layer a better domain specific model on
+    // top to accomodate those local strangenesses.
+    class native_memory_permission_model : public memory_permission_model {
+      public:
+        typedef memory_permission_reader<native_memory_permission_model> reader;
+        friend class memory_permission_reader<native_memory_permission_model>;
+
+        // POD type
+        struct range {
+            const void *start;
+            const void *end;
+            memory_permissions flags;
+            inline operator const void *() const { return start; }
+        };
+
+        // you CAN create your own, but there is a singleton instance()
+        // since this is inherently sharable
+        native_memory_permission_model();
+        ~native_memory_permission_model();
+
+        // call after something hinky is done to memory to ensure accurate permissions
+        void clear();
+
+        // ack! a singleton
+        static native_memory_permission_model &instance();
+
+      private:
+        typedef native_rw_mutex mutex;
+        typedef std::vector<range> vector;
+
+        mutex m_mutex;
+        vector m_ranges;
+
+        range *find_entry(const void *);
+        void rebuild();
+
+      protected:
+        void rdlock() { m_mutex.rdlock(); }
+        void unlock() { m_mutex.wrlock(); }
+        virtual memory_permissions operator[](const void *);
+    };
+} // namespace jitpp
+
+// #include <sys/stat.h>
+
+using namespace jitpp;
+
+// file reading stuff
+namespace {
+    // trick from the boehm collector, calculate its length to see if the maps file is mutating
+    // underneath us. done the hard way because we can't seek through it
+    size_t proc_self_maps_length() {
+        int f = open("/proc/self/maps", O_RDONLY);
+        size_t total = 0;
+        static const size_t buf_size = 512;
+        char buf[buf_size];
+        ssize_t result;
+        do {
+            result = read(f, buf, buf_size);
+            if (result == -1)
+                return 0;
+            total += result;
+        } while (result > 0);
+        close(f);
+        VLOG(2) << total << " bytes in /proc/self/maps";
+        return total;
+    }
+
+    ssize_t repeated_read(int fd, char *buf, size_t count) {
+        ssize_t num_read = 0;
+        ssize_t result;
+
+        while (num_read < count) {
+            result = read(fd, buf + num_read, count - num_read);
+            if (result < 0)
+                return result;
+            if (result == 0)
+                break;
+            num_read += result;
+        }
+        return num_read;
+    }
+
+    class linux_proc_self_maps_parser {
+      private:
+        typedef native_memory_permission_model::range range;
+        const char *i;
+
+      public:
+        linux_proc_self_maps_parser(const char *body) : i(body) {}
+        inline bool eof() const { return i == 0 || *i == '\0'; }
+        range parse() {
+            range result;
+            while (*i == ' ')
+                ++i;
+            char *endi;
+            result.start = reinterpret_cast<const void *>(strtoul(i, &endi, 16));
+            i = endi;
+            ++i;
+            result.end = reinterpret_cast<const void *>(strtoul(i, &endi, 16));
+            i = endi;
+            while (*i == ' ')
+                ++i;
+            result.flags = 0;
+            if (i[0] == 'r')
+                result.flags |= memory_permission::read;
+            if (i[1] == 'w')
+                result.flags |= memory_permission::write;
+            if (i[2] == 'x')
+                result.flags |= memory_permission::execute;
+            while (*i && *i++ != '\n')
+                ;
+            return result;
+        }
+    };
+} // namespace
+
+namespace jitpp {
+    native_memory_permission_model::native_memory_permission_model() : m_mutex() {
+        // preemptive
+        rebuild();
+    }
+    native_memory_permission_model::~native_memory_permission_model() {}
+    native_memory_permission_model::range *
+    native_memory_permission_model::find_entry(const void *p) {
+        std::vector<range>::iterator i =
+            std::lower_bound(m_ranges.begin(), m_ranges.end(), p, std::less<const void *>());
+        return (i == m_ranges.end() || i->end < p) ? 0 : &*i;
+    }
+
+    // precondition: read lock held
+    memory_permissions native_memory_permission_model::operator[](const void *p) {
+        range *m = find_entry(p);
+        if (m != 0)
+            return m->flags;
+        rebuild();
+        m = find_entry(p);
+        return (m != 0) ? m->flags
+                        : memory_permission::read | memory_permission::write |
+                              memory_permission::execute;
+    }
+
+    // precondition: none
+    void native_memory_permission_model::clear() {
+        mutex::scoped_lock lock(m_mutex, true);
+        m_ranges.clear();
+    }
+
+    // precondition: none
+    void native_memory_permission_model::rebuild() {
+
+        size_t file_size = 0;
+        size_t old_file_size = 0;
+        size_t buf_size = 0;
+        char *buf = 0;
+
+        mutex::scoped_lock lock(m_mutex, true);
+
+        m_ranges.clear();
+
+        do {
+            if (file_size >= buf_size) {
+                file_size = proc_self_maps_length();
+                CHECK_NE(file_size, 0) << "Unable to read /proc/self/maps";
+                if (file_size >= buf_size) {
+                    buf_size = std::max(buf_size, file_size + (file_size >> 1) + 1);
+                    VLOG(2) << "growing buffer to " << buf_size;
+                    buf = reinterpret_cast<char *>(alloca(buf_size));
+                }
+            }
+
+            // check for alloca failure
+            CHECK(buf != 0) << "Unable to alloca " << file_size << " bytes in tracer.";
+
+            int f = open("/proc/self/maps", O_RDONLY);
+            CHECK_NE(f, -1) << "Unable to reread /proc/self/maps";
+
+            old_file_size = file_size;
+            file_size = 0;
+
+            ssize_t result;
+            do {
+                result = repeated_read(f, buf, buf_size - 1);
+                if (result <= 0)
+                    break;
+                file_size += result;
+            } while (result == buf_size - 1);
+            close(f);
+        } while (file_size >= buf_size || file_size != old_file_size);
+        buf[file_size] = '\0';
+
+        std::cout << buf;
+
+        // now that we've read the file, parse the file.
+        linux_proc_self_maps_parser parser(buf);
+        while (!parser.eof()) {
+            m_ranges.push_back(parser.parse());
+        }
+        VLOG(1) << "parsed /proc/self/maps";
+    }
+
+    namespace {
+        native_memory_permission_model g_native_model;
+    }
+
+    native_memory_permission_model &native_memory_permission_model::instance() {
+        return g_native_model;
+    }
+} // namespace jitpp
+
+// Historical memory-permission support; the interpreter does not import it.
+module jitpp:memory;

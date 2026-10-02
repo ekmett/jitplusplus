@@ -1,28 +1,28 @@
 # Instruction encoding metadata
 
-`interpreter::encoding_lut` describes byte layout for the primary and `0F`
-opcode maps in 64-bit mode. `decoder.cc` builds its 512 entries at compile time
-from named recipes and opcode families. The runtime still performs one indexed
-lookup; there is no table-generation step in the build.
-
-For example, the arithmetic families repeat every eight primary opcodes:
+`interpreter::encoding_lut` in [interpreter.ccm](../jit++/interpreter.ccm)
+lives beside the decoder state, prefix helpers, and `parse()`. It describes byte layout for the primary and `0F`
+opcode maps in 64-bit mode. Its 512 entries use Clang's GNU array/range
+initializers, with named recipes for opcode families. Unspecified entries are
+zero; the runtime performs one indexed lookup.
 
 ```cpp
-for (unsigned op = 0; op <= 0x38; op += 8) {
-    range(op, op + 3, M); // ModR/M forms
-    table[op + 4] = B;   // accumulator, imm8
-    table[op + 5] = Z;   // accumulator, imm16/32
-}
+[0x00 ... 0x03] = MR, [0x04] = B, [0x05] = Z, // ADD
+[0x08 ... 0x0b] = MR, [0x0c] = B, [0x0d] = Z, // OR
+[0x50 ... 0x5f] = D,                        // PUSH/POP registers
 ```
 
-`M` means ModR/M; `B` and `Z` select immediate forms; `D` selects the default
+Ranges do not overlap. The C99-designator warning is suppressed locally for
+this intentional Clang extension; initializer-override warnings remain enabled.
+
+`MR` means ModR/M; `B` and `Z` select immediate forms; `D` selects the default
 64-bit operand size; `H` selects an explicit irregular form in `parse()`.
 Other named constants cover fixed imm16, operand-sized immediates, ENTER's
 imm16/imm8 pair, and the extra opcode byte in `0F 38`/`0F 3A`.
 
 The table describes byte consumption, not instruction validity or interpreter
 support. A zero entry means no additional bytes are described; it does not mean
-that an opcode is valid. `opcode.h` remains responsible for execution or fallback.
+that an opcode is valid. `interpreter::interpret_opcode()` remains responsible for execution or fallback.
 
 ## Cases that need more than an opcode byte
 

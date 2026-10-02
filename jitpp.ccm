@@ -1,11 +1,4 @@
-module;
-#include <jit++/application.h>
-#include <jit++/interpreter.h>
-
 export module jitpp;
 
-// Global ownership preserves the C++ symbols referenced by tracer_start.S.
-export namespace jitpp {
-    using ::jitpp::application;
-    using ::jitpp::interpreter;
-}
+export import :application;
+export import :interpreter;

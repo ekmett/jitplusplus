@@ -9,6 +9,8 @@ transition.
 The C++26 module `jitpp` exports `jitpp::application` and `jitpp::interpreter`.
 The interpreter owns registers, decoding, flags, and instruction execution in
 one concrete class, with no inheritance, virtual dispatch, or PIMPL allocation.
+Its state and method bodies live together in [interpreter.ccm](jit++/interpreter.ccm);
+[application.ccm](jit++/application.ccm) contains runtime setup.
 
 ## Build and use
 

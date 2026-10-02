@@ -41,7 +41,7 @@ when all dependencies are already in the toolchain's search paths.
 The target `jitpp::jitpp` provides one static library and the `jitpp` module.
 Consume it with `add_subdirectory`, as shown in the [README](../README.md).
 Set `CXX_EXTENSIONS OFF` on consumers to match the module's strict C++26 mode.
-Importers do not need the implementation headers. `JITPP_BUILD_TESTS` defaults
+The API is defined directly in `.ccm` files; importers use no project headers. `JITPP_BUILD_TESTS` defaults
 to enabled for a standalone build and disabled when included by another project.
 
 ## Tests and benchmark

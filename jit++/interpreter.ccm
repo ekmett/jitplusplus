@@ -1,0 +1,2747 @@
+module;
+#include <jit++/config.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <type_traits>
+#include <iostream>
+#include <iomanip>
+#include <pthread.h>
+#include <asm/prctl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <dlfcn.h>
+#include <udis86.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+
+DECLARE_uint64(jitpp_default_stack_size);
+DECLARE_uint64(jitpp_steps);
+
+DEFINE_uint64(jitpp_default_stack_size, 16384,
+              "the default stack size for tracing. If too small then deep recursion or sparse "
+              "allocas will fail to trace.");
+
+DEFINE_uint64(jitpp_steps, -1, "the number of steps to trace before quitting");
+
+namespace jitpp {
+
+    class interpreter_exception : public std::exception {
+      public:
+        virtual bool fatal() const throw() = 0;
+        virtual const char *what() const throw() = 0;
+    };
+
+    // we haven't yet added support for this opcode.
+    class unsupported_opcode_exception : public interpreter_exception {
+      public:
+        bool fatal() const throw() { return false; }
+        const char *what() const throw() { return "unsupported opcode"; }
+    };
+
+    // we are parsing an invalid opcode. this is probably a bug, but it can be handled by the main
+    // program
+    class invalid_opcode_exception : public interpreter_exception {
+      public:
+        bool fatal() const throw() { return false; }
+        const char *what() const throw() { return "invalid opcode"; }
+    };
+
+    // we are parsing a valid opcode that we will probably never support
+    class uninterpretable_opcode_exception : public interpreter_exception {
+      public:
+        bool fatal() const throw() { return false; }
+        const char *what() const throw() { return "uninterpretable opcode"; }
+    };
+
+    // something we never expected to see has happened
+    class interpreter_logic_error : public interpreter_exception {
+      public:
+        virtual bool fatal() const throw() { return true; }
+        virtual const char *what() const throw() { return "interpreter logic error"; }
+    };
+} // namespace jitpp
+
+namespace jitpp {
+    namespace interpreting {
+        namespace flags {
+
+            static const int32_t CF = 0x0001;
+            static const int32_t PF = 0x0004;
+            static const int32_t AF = 0x0010;
+            static const int32_t ZF = 0x0040;
+            static const int32_t SF = 0x0080;
+            static const int32_t TF = 0x0100;
+            static const int64_t IF = 0x0200;
+            static const int32_t DF = 0x0400;
+            static const int32_t OF = 0x0800;
+
+            static const int32_t OSZAPC = OF | SF | ZF | AF | PF | CF;
+            static const int32_t OSZAP = OF | SF | ZF | AF | PF;
+            static const int64_t OSZPC = OF | SF | ZF | PF | CF;
+
+            // plain old data
+            struct context {
+                int64_t op1, op2, result;
+            };
+
+            // plain old data
+            struct handler {
+                bool (*m_cf)(const context &);
+                bool (*m_af)(const context &);
+                bool (*m_of)(const context &);
+                const int32_t m_handled_flags;
+                const int32_t m_cleared_flags;
+
+                inline bool cf(const context &ctx) const { return m_cf(ctx); }
+                inline bool af(const context &ctx) const { return m_af(ctx); }
+                inline bool of(const context &ctx) const { return m_of(ctx); }
+                inline int32_t handled_flags() const { return m_handled_flags; }
+                inline int32_t cleared_flags() const { return m_cleared_flags; }
+            };
+
+            const uint8_t parity_lut[256] = {
+                1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0,
+                0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
+                0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1,
+                1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+                0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1,
+                1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0,
+                1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
+                0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+                0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0,
+                0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1};
+            inline bool calculate_parity(uint8_t b) { return parity_lut[b] != 0; }
+
+            template <typename T> inline bool test_cc(T &i, uint8_t cc) {
+                switch (cc) {
+                case 0x0:
+                    return i.of();
+                case 0x1:
+                    return !i.of();
+                case 0x2:
+                    return i.cf();
+                case 0x3:
+                    return !i.cf();
+                case 0x4:
+                    return i.zf();
+                case 0x5:
+                    return !i.zf();
+                case 0x6:
+                    return i.cf() || i.zf();
+                case 0x7:
+                    return !(i.cf() || i.zf());
+                case 0x8:
+                    return i.sf();
+                case 0x9:
+                    return !i.sf();
+                case 0xa:
+                    return i.pf();
+                case 0xb:
+                    return !i.pf();
+                case 0xc:
+                    return i.sf() != i.of();
+                case 0xd:
+                    return i.sf() == i.of();
+                case 0xe:
+                    return i.zf() || (i.sf() != i.of());
+                case 0xf:
+                    return !i.zf() && (i.sf() == i.of());
+                }
+            }
+
+            bool bad_flag(const context &) {
+                LOG(DFATAL) << "unexpected lazy flag";
+                return false;
+            }
+        } // namespace flags
+    } // namespace interpreting
+} // namespace jitpp
+
+namespace jitpp {
+    namespace interpreting {
+        using namespace jitpp::interpreting::flags;
+
+        bool sbb_af(const context &ctx) { return (ctx.op1 ^ ctx.op2 ^ ctx.result) & 0x10; }
+        bool sbb_of(const context &ctx) {
+            return (((((ctx.op1) ^ (ctx.op2)) & ((ctx.op2) ^ (ctx.result))) &
+                     0x8000000000000000ULL) != 0);
+        }
+        static bool add_cf(const context &ctx) {
+            // VLOG(1) << "add_cf " << (ctx.result < ctx.op1 ? "true" : "false");
+            return (uint64_t)ctx.result < (uint64_t)ctx.op1;
+        }
+        static bool add_of(const context &ctx) {
+            return (((~((ctx.op1) ^ (ctx.op2)) & ((ctx.op2) ^ (ctx.result))) &
+                     0x8000000000000000ULL) != 0);
+        }
+        static bool adc_cf(const context &ctx) { return (uint64_t)ctx.result <= (uint64_t)ctx.op1; }
+        static bool sub_cf(const context &ctx) { return (uint64_t)ctx.op1 < (uint64_t)ctx.op2; }
+
+    } // namespace interpreting
+} // namespace jitpp
+
+namespace jitpp {
+    namespace interpreting {
+        struct os64 {
+            typedef int64_t v;
+            typedef int32_t z;
+            typedef uint32_t uz;
+            typedef int64_t qv;
+            typedef int32_t smaller_size;
+            static const int bits = 64;
+            static const char *reg_name(int r);
+        };
+
+        struct os32 {
+            typedef int32_t v;
+            typedef int32_t z;
+            typedef uint32_t uz;
+            typedef int64_t qv;
+            typedef int16_t smaller_size;
+            static const int bits = 32;
+            static const char *reg_name(int r);
+        };
+
+        struct os16 {
+            typedef int16_t v;
+            typedef int16_t z;
+            typedef uint16_t uz;
+            typedef int16_t qv;
+            typedef int8_t smaller_size;
+            static const int bits = 16;
+            static const char *reg_name(int r);
+        };
+
+        template <typename T> uint64_t zero_extend(T v) { return v; }
+        template <typename T> int64_t sign_extend(T v) { return v; }
+
+        template <typename T> struct os;
+        template <> struct os<int16_t> {
+            typedef os16 value;
+        };
+        template <> struct os<int32_t> {
+            typedef os32 value;
+        };
+        template <> struct os<int64_t> {
+            typedef os64 value;
+        };
+
+        template <typename T> struct group_1_traits {
+            static inline bool sbb_cf(const flags::context &ctx) {
+                return ((uint64_t)ctx.op1 < (uint64_t)ctx.result ||
+                        (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
+            }
+            static const flags::handler sbb_flags;
+        };
+        template <typename T>
+        const flags::handler group_1_traits<T>::sbb_flags = {sbb_cf, sbb_af, sbb_of, flags::OSZAPC,
+                                                             0};
+
+        using namespace jitpp::interpreting::flags;
+
+        template <typename T> struct group_2_traits {
+            static const int size = sizeof(T) * 8;
+            static const int mask = size == 64 ? 0x3f : 0x1f;
+            static inline bool sal_cf(const context &ctx) {
+                return ((ctx.op1 >> (size - ctx.op2)) & 1) != 0;
+            }
+            static inline bool sal_of(const context &ctx) { return (ctx.op1 ^ ctx.result) < 0; }
+            static inline bool sar_cf(const context &ctx) {
+                return ((ctx.op1 >> (ctx.op2 - 1)) & 1) != 0;
+            }
+            static inline bool ror_cf(const context &ctx) { return (ctx.result < 0); }
+            static inline bool shr_of(const context &ctx) {
+                return ((ctx.result << 1) ^ ctx.result) < 0;
+            }
+            static const flags::handler sal_flags, rol_flags, shr_flags, ror_flags, sar_flags,
+                shrd_flags;
+        };
+
+        template <typename T>
+        const flags::handler group_2_traits<T>::sal_flags = {sal_cf, flags::bad_flag, sal_of, OSZPC,
+                                                             AF};
+        template <typename T>
+        const flags::handler group_2_traits<T>::rol_flags = {sal_cf, flags::bad_flag, sal_of,
+                                                             OF | CF, 0};
+        template <typename T>
+        const flags::handler group_2_traits<T>::sar_flags = {sar_cf, flags::bad_flag,
+                                                             flags::bad_flag, CF, OF};
+        template <typename T>
+        const flags::handler group_2_traits<T>::shr_flags = {sar_cf, flags::bad_flag, shr_of, OSZPC,
+                                                             AF};
+        template <typename T>
+        const flags::handler group_2_traits<T>::ror_flags = {ror_cf, flags::bad_flag, shr_of,
+                                                             OF | CF, 0};
+        template <typename T>
+        const flags::handler group_2_traits<T>::shrd_flags = {sar_cf, flags::bad_flag, shr_of,
+                                                              OSZPC, AF};
+
+        using namespace jitpp::interpreting::flags;
+
+        template <typename T> struct group_3_traits {
+            static inline bool neg_cf(const context &ctx) { return ctx.result != 0; }
+            static inline bool neg_af(const context &ctx) { return (ctx.result & 0xf) != 0; }
+            static inline bool neg_of(const context &ctx) {
+                return ctx.result == 1ULL << (sizeof(T) * 8 - 1);
+            }
+            static const flags::handler neg_flags;
+        };
+        template <typename T>
+        const flags::handler group_3_traits<T>::neg_flags = {neg_cf, neg_af, neg_of, flags::OSZAPC,
+                                                             0};
+
+        using namespace jitpp::interpreting::flags;
+
+        template <typename T> struct group_4_traits {
+            static const int size = sizeof(T) * 8;
+            static const int shift_mask = (size == 64) ? 0x3f : 0x1f;
+            static inline bool dec_of(const context &ctx) {
+                return ctx.result == (1ULL << (size - 1)) - 1;
+            }
+            static inline bool inc_of(const context &ctx) {
+                return ctx.result == 1ULL << (size - 1);
+            }
+            static inline bool inc_af(const context &ctx) { return (ctx.result & 0xf) == 0; }
+            static inline bool dec_af(const context &ctx) { return (ctx.result & 0xf) == 0xf; }
+            static const handler inc_flags, dec_flags;
+        };
+
+        template <typename T>
+        const handler group_4_traits<T>::inc_flags = {bad_flag, inc_af, inc_of, OSZAP, 0};
+        template <typename T>
+        const handler group_4_traits<T>::dec_flags = {bad_flag, dec_af, dec_of, OSZAP, 0};
+
+        extern const char *byte_reg_name(int r, bool has_rex);
+        extern __attribute__((noreturn)) void illegal();
+        extern __attribute__((noreturn)) void unsupported();
+        extern __attribute__((noreturn)) void uninterpretable();
+        extern __attribute__((noreturn)) void logic_error();
+
+    } // namespace interpreting
+} // namespace jitpp
+
+namespace jitpp {
+    namespace interpreting {
+
+        static const char *os64_reg_names[16] = {"rax", "rcx", "rdx", "rbx", "rsp", "rbp",
+                                                 "rsi", "rdi", "r8",  "r9",  "r10", "r11",
+                                                 "r12", "r13", "r14", "r15"};
+        static const char *os32_reg_names[16] = {"eax",  "ecx",  "edx",  "ebx", "esp",  "ebp",
+                                                 "esi",  "edi",  "r8d",  "r9d", "r10d", "r11d",
+                                                 "r12d", "r13d", "r14d", "r15d"};
+        static const char *os16_reg_names[16] = {"ax",   "cx",   "dx",   "bx",  "sp",   "bp",
+                                                 "si",   "di",   "r8w",  "r9w", "r10w", "r11w",
+                                                 "r12w", "r13w", "r14w", "r15w"};
+        static const char *byte_reg_names_rex[16] = {"al",   "cl",   "dl",   "bl",  "spl",  "bpl",
+                                                     "sil",  "dil",  "r8b",  "r9b", "r10b", "r11b",
+                                                     "r12b", "r13b", "r14b", "r15b"};
+        static const char *byte_reg_names_norex[8] = {"al", "cl", "dl", "bl",
+                                                      "ah", "ch", "dh", "bh"};
+
+        const char *os64::reg_name(int r) { return os64_reg_names[r]; }
+        const char *os32::reg_name(int r) { return os32_reg_names[r]; }
+        const char *os16::reg_name(int r) { return os16_reg_names[r]; }
+        const char *byte_reg_name(int r, bool has_rex) {
+            return has_rex ? byte_reg_names_rex[r] : byte_reg_names_norex[r];
+        }
+
+        void illegal() { throw invalid_opcode_exception(); }
+        void unsupported() { throw unsupported_opcode_exception(); }
+        void uninterpretable() { throw uninterpretable_opcode_exception(); }
+        void logic_error() { throw interpreter_logic_error(); }
+
+    } // namespace interpreting
+} // namespace jitpp
+
+namespace jitpp {
+    JITPP_ALWAYS_INLINE bool likely(bool x) {
+#ifdef __GNUC__
+        return static_cast<bool>(__builtin_expect(static_cast<long>(x), 1L));
+#else
+        return x;
+#endif
+    }
+    JITPP_ALWAYS_INLINE bool unlikely(bool x) {
+#ifdef __GNUC__
+        return static_cast<bool>(__builtin_expect(static_cast<long>(x), 0L));
+#else
+        return x;
+#endif
+    }
+} // namespace jitpp
+
+namespace jitpp {
+    using namespace interpreting;
+    using namespace interpreting::flags;
+
+    union mmx_t {
+        long double ld;
+        float f[2];
+        double df[1];
+        int64_t q[1];
+        int32_t d[2];
+        int16_t w[4];
+        int8_t b[8], reserved[8];
+    } __attribute__((aligned(8)));
+
+    union xmm_t {
+        double df[2];
+        float f[4];
+        int64_t q[2];
+        int32_t d[4];
+        int16_t w[8];
+        int8_t b[16];
+    } __attribute__((aligned(16)));
+
+    static const char *reg_spaces = "                   ";
+    static const char *mem_spaces = "                  ";
+    // One concrete owner of the saved machine state, decoder, flags, and opcodes.
+    class alignas(16) interpreter final {
+      public:
+        // Fixed prefix consumed by tracer_start.S; no vtable.
+        void stub();
+
+        void run() {
+            m_fs_base_known = m_gs_base_known = false;
+            m_stopped = false;
+            int64_t steps = FLAGS_jitpp_steps;
+            while (steps-- && !m_stopped) {
+                if (VLOG_IS_ON(2))
+                    print_regs();
+
+                int64_t old_rip = rip();
+                try {
+                    rip() = parse(old_rip);
+                    if (VLOG_IS_ON(1)) {
+                        print_address(rip());
+                        print_opcode(old_rip, rip() - old_rip);
+                    }
+
+                    if (has_lock_prefix()) {
+                        switch (log_v) {
+                        case 1:
+                            interpret_locked_opcode<os16>();
+                            break;
+                        case 2:
+                            interpret_locked_opcode<os32>();
+                            break;
+                        case 3:
+                            interpret_locked_opcode<os64>();
+                            break;
+                        default:
+                            logic_error();
+                            break;
+                        }
+                    } else {
+                        switch (log_v) {
+                        case 1:
+                            interpret_opcode<os16>();
+                            break;
+                        case 2:
+                            interpret_opcode<os32>();
+                            break;
+                        case 3:
+                            interpret_opcode<os64>();
+                            break;
+                        default:
+                            logic_error();
+                            break;
+                        }
+                    }
+                } catch (interpreter_exception &e) {
+                    if (e.fatal())
+                        LOG(FATAL) << e.what();
+                    else
+                        LOG(WARNING) << e.what();
+                    m_rip = old_rip; // restore rip to before the parsing attempt
+                    rflags();        // force commonuation of any lazy rflags
+                    // show the current intruction if we aren't logging it already
+                    print_regs();
+                    print_opcode(m_rip);
+                    return; // stop interpreting and return
+                }
+            }
+            // The assembly exit restores m_rflags directly, including on an explicit stop.
+            rflags();
+            if (!m_stopped) {
+                VLOG(1) << "Completed " << FLAGS_jitpp_steps << " steps.";
+                print_regs();
+                print_opcode(m_rip);
+            }
+        }
+
+        int64_t m_reserved[2];    /* 0: retain the saved-register offsets */
+        int64_t m_reg[16];        /* 16 */
+        int64_t m_rip;            /* 144 */
+        mutable int64_t m_rflags; /* 152 */
+        // fxsave format start
+        int16_t m_fx_fcw; /* 160 */
+        int16_t m_fx_fsw;
+        int16_t m_fx_ftw;
+        int16_t m_fx_fop;
+        int32_t m_fx_ip;
+        int16_t m_fx_cs;
+        int16_t m_fx_reserved_1;
+        int32_t m_fx_dp;
+        int16_t m_fx_ds;
+        int16_t m_fx_reserved_2;
+        int32_t m_fx_mxcsr;
+        int32_t m_fx_reserved_3;
+        mmx_t m_fx_mmx[8];
+        xmm_t m_fx_xmm[16];
+        int64_t m_fx_reserved_4[12];
+        // end fxsave format
+        uint8_t *m_stack;    /* 672 */
+        size_t m_stack_size; /* 680 */
+        /* end of fixed structure */
+        bool m_stopped;
+
+        interpreter(size_t stack_size = default_stack_size())
+            : m_stack_size(stack_size), m_handler(0), m_lazy_flags(0) {
+            for (int i = 0; i < 16; ++i) {
+                m_reg[i] = 0xbad0 + i;
+            }
+        }
+
+        ~interpreter() {}
+
+        static size_t default_stack_size() { return FLAGS_jitpp_default_stack_size; }
+
+        /* single threaded, non re-entrant! */
+        JITPP_NOTHROW void start();
+        void stop() { m_stopped = true; }
+
+        // hide copy and assignment
+        interpreter(const interpreter &) = delete;
+        interpreter &operator=(const interpreter &) = delete;
+
+        // Lazy arithmetic flags.
+
+        const handler *m_handler;
+        context m_context;
+
+        // m_rflags is mutable for lazy flag materialization.
+        int64_t &base_rflags() const { return m_rflags; }
+
+        inline bool is_lazy(int32_t mask) const { return (m_lazy_flags & mask) != 0; }
+        inline bool has_flag(int32_t mask) const { return (base_rflags() & mask) != 0; }
+
+        mutable int64_t m_lazy_flags;
+
+        inline int64_t lazy_flags() const { return m_lazy_flags; }
+        inline bool cf() const {
+            return is_lazy(CF) ? force_lazy(CF, m_handler->cf(m_context)) : has_flag(CF);
+        }
+        inline bool pf() const {
+            return is_lazy(PF) ? force_lazy(PF, calculate_parity(m_context.result)) : has_flag(PF);
+        }
+        inline bool af() const {
+            return is_lazy(AF) ? force_lazy(AF, m_handler->af(m_context)) : has_flag(AF);
+        }
+        inline bool zf() const {
+            return is_lazy(ZF) ? force_lazy(ZF, m_context.result == 0) : has_flag(ZF);
+        }
+        inline bool sf() const {
+            return is_lazy(SF) ? force_lazy(SF, m_context.result < 0) : has_flag(ZF);
+        }
+        inline bool of() const {
+            return is_lazy(OF) ? force_lazy(OF, m_handler->of(m_context)) : has_flag(OF);
+        }
+        inline bool tf() const { return has_flag(TF); }
+        inline bool df() const { return has_flag(DF); }
+
+        inline bool set_flag(int32_t mask, bool value = true) {
+            m_lazy_flags &= ~mask;
+            if (value)
+                base_rflags() |= mask;
+            else
+                base_rflags() &= ~mask;
+            return value;
+        }
+
+        inline bool set_flags(int32_t mask, int32_t value) {
+            m_lazy_flags &= ~mask;
+            base_rflags() = (base_rflags() & ~mask) | (value & mask);
+        }
+
+        inline bool cf(bool value) { return set_flag(CF, value); }
+        inline bool pf(bool value) { return set_flag(PF, value); }
+        inline bool af(bool value) { return set_flag(AF, value); }
+        inline bool zf(bool value) { return set_flag(ZF, value); }
+        inline bool sf(bool value) { return set_flag(SF, value); }
+        inline bool of(bool value) { return set_flag(OF, value); }
+        inline bool tf(bool value) {
+            if (value)
+                base_rflags() |= TF;
+            else
+                base_rflags() &= ~TF;
+            return value;
+        }
+        inline bool df(bool value) {
+            if (value)
+                base_rflags() |= DF;
+            else
+                base_rflags() &= ~DF;
+            return value;
+        }
+
+        inline bool force_lazy(int64_t mask, bool value = true) const {
+            VLOG(1) << "lazy flag " << mask << " = " << (value ? "true" : "false");
+            m_lazy_flags &= ~mask;
+            if (value)
+                base_rflags() |= mask;
+            else
+                base_rflags() &= ~mask;
+            return value;
+        }
+
+        // set carry, parity, aux, zero, sign and overflow all at once, note, new_flag_handler must
+        // not go out of scope before rflags() is requested!
+        int64_t handle_rflags(const handler &h, int64_t result, int64_t op1 = 0, int64_t op2 = 0) {
+            base_rflags() &= ~h.cleared_flags();
+            m_lazy_flags &= ~(h.handled_flags() | h.cleared_flags()) & OSZAPC;
+            // force any flags that don't overlap with the new flag handler to evaluate
+            rflags();
+
+            // install the new flag handler
+            m_lazy_flags = h.handled_flags();
+            m_handler = &h;
+            m_context.op1 = op1;
+            m_context.op2 = op2;
+            m_context.result = result;
+            return result;
+        }
+        inline int64_t &rflags() {
+            if (m_lazy_flags != 0) {
+                // force flags
+                cf();
+                pf();
+                af();
+                zf();
+                sf();
+                of();
+            }
+            return base_rflags();
+        }
+
+        inline void rflags(int64_t value) {
+            m_lazy_flags = 0;
+            base_rflags() = value;
+        }
+        inline bool test_cc(uint8_t cc) {
+            bool result = jitpp::interpreting::flags::test_cc(*this, cc);
+            VLOG(1) << "condition? " << (result ? "true" : "false");
+            return result;
+        }
+
+        template <typename T> static T fetch(int64_t &i) {
+            T result;
+            std::memcpy(&result, reinterpret_cast<const void *>(i), sizeof result);
+            i += sizeof(result);
+            return result;
+        }
+
+        // Decoder state and prefix helpers.
+
+        int64_t imm;        // any immediate value byte, word, dword
+        int32_t disp;       // displacement
+        uint16_t parts;     // part_* indicates which optional parts are present
+        uint16_t code;      // xx of 1xx if opcode is a 1 byte or has 0f xx form
+        uint8_t sse_prefix; // 0 = none, 1 = 66 only, 2 = f2, 3 = f3
+        uint8_t prefix;     // rex nybble, flags for other prefixes
+        uint8_t extra;      // 0f 3a and 0f 38 have an extra byte
+        uint8_t mod;
+        uint8_t reg;       // extended with rex_r
+        uint8_t rm;        // extended with rex_b
+        uint8_t log_scale; // 1,2,4 or 8
+        uint8_t index;     // extended with rex_x
+        uint8_t base;      // extended with rex_b
+        uint8_t imm2;      // second immediate byte, e.g. ENTER or SSE4a
+        uint8_t seg_prefix;
+        uint8_t log_v; // default operand size = 2^log_v bytes
+
+        inline bool has_seg_prefix() const { return seg_prefix != 0; }
+        inline bool has_os_prefix() const { return (prefix & prefix_66h_mask) != 0; }
+        inline bool has_as_prefix() const { return (prefix & prefix_67h_mask) != 0; }
+        inline bool has_lock_prefix() const { return (prefix & prefix_lock_mask) != 0; }
+        inline bool has_repne_prefix() const { return sse_prefix == 2; }
+        inline bool has_rep_prefix() const { return sse_prefix == 3; }
+        inline bool has_repxx_prefix() const { return (prefix & prefix_repxx_mask) != 0; }
+        inline bool has_rex() const { return (prefix & prefix_rex_mask) != 0; }
+        inline bool has_rex_w() const { return (prefix & prefix_rex_w_mask) != 0; }
+        inline bool has_rex_r() const { return (prefix & prefix_rex_r_mask) != 0; }
+        inline bool has_rex_x() const { return (prefix & prefix_rex_x_mask) != 0; }
+        inline bool has_rex_b() const { return (prefix & prefix_rex_b_mask) != 0; }
+        inline bool has_extra() const { return (parts & part_extra) != 0; }
+        inline bool has_modrm() const { return (parts & part_modrm) != 0; }
+        inline bool has_sib() const { return (parts & part_sib) != 0; }
+        inline bool has_disp() const { return (parts & part_disp) != 0; }
+        inline bool has_imm() const { return (parts & part_imm) != 0; }
+        inline bool has_imm2() const { return (parts & part_imm2) != 0; }
+        inline bool is_rip_relative() const { return !has_sib() && (mod == 0) && ((rm & 7) == 5); }
+        inline bool has_memory_operand() const { return mod != 3; } // assumes has_modrm
+        inline bool address_size_is_64() const { return (prefix & prefix_67h_mask) == 0; }
+
+        inline uint8_t v() const { return 1 << log_v; }
+        inline uint8_t scale() const { return 1 << log_scale; }
+
+        // augment with rex, input is a 3 bit wide value
+        inline uint8_t rex_w(uint8_t b) const { return (prefix & prefix_rex_w_mask) | b; }
+        inline uint8_t rex_r(uint8_t b) const { return ((prefix & prefix_rex_r_mask) << 1) | b; }
+        inline uint8_t rex_x(uint8_t b) const { return ((prefix & prefix_rex_x_mask) << 2) | b; }
+        inline uint8_t rex_b(uint8_t b) const { return ((prefix & prefix_rex_b_mask) << 3) | b; }
+
+        // flags and lookups
+        static const uint8_t prefix_legacy_mask = 0xf0;
+        static const uint8_t prefix_repxx_mask = 0x80;
+        static const uint8_t prefix_lock_mask = 0x40;
+        static const uint8_t prefix_67h_mask = 0x20;
+        static const uint8_t prefix_66h_mask = 0x10;
+
+        static const uint8_t prefix_rex_mask = 0x0f;
+        static const uint8_t prefix_rex_w_mask = 0x08;
+        static const uint8_t prefix_rex_r_mask = 0x04;
+        static const uint8_t prefix_rex_x_mask = 0x02;
+        static const uint8_t prefix_rex_b_mask = 0x01;
+
+        // extra, modrm, sib, disp, imm, imm2
+        static const uint8_t part_modrm = 0x80; // == encoding_modrm_byte
+        static const uint8_t part_extra = 0x40; // == encoding_extra_byte
+        static const uint8_t part_sib = 0x10;   // scale index & base are valid
+        static const uint8_t part_disp = 0x08;
+        static const uint8_t part_imm = 0x04;
+        static const uint8_t part_imm2 = 0x02;
+
+        static const uint8_t encoding_has_modrm = 0x80;
+        static const uint8_t encoding_extra_byte = 0x40;    // [0f 38] or [0f 3a]
+        static const uint8_t encoding_default_os_64 = 0x10; // 50-5f, ff/6 8f/0
+
+        static const uint8_t encoding_immediate_mask = 0x07;
+        static const uint8_t encoding_no_imm = 0x00;
+        static const uint8_t encoding_Ib = 0x01;
+        static const uint8_t encoding_Iz = 0x02;
+        static const uint8_t encoding_Iw = 0x03;
+        static const uint8_t encoding_IwIb = 0x04; // ENTER
+        static const uint8_t encoding_Iv = 0x05;   // z,w,q as appropriate to size
+        static const uint8_t encoding_hard = 0x06; // handle opcode by opcode hard code
+
+        // Recipes describe bytes to consume, not whether execution is supported.
+        enum : uint8_t {
+            MR = encoding_has_modrm,
+            B = encoding_Ib,
+            Z = encoding_Iz,
+            D = encoding_default_os_64,
+            H = encoding_hard
+        };
+        // Clang accepts GNU array/range designators in C++; keep overlap warnings enabled.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc99-designator"
+        // clang-format off
+        static inline constexpr uint8_t encoding_lut[512] = {
+            // Primary map: arithmetic families, stack operations, branches and moves.
+            [0x00 ... 0x03] = MR, [0x04] = B, [0x05] = Z, // ADD
+            [0x08 ... 0x0b] = MR, [0x0c] = B, [0x0d] = Z, // OR
+            [0x10 ... 0x13] = MR, [0x14] = B, [0x15] = Z, // ADC
+            [0x18 ... 0x1b] = MR, [0x1c] = B, [0x1d] = Z, // SBB
+            [0x20 ... 0x23] = MR, [0x24] = B, [0x25] = Z, // AND
+            [0x28 ... 0x2b] = MR, [0x2c] = B, [0x2d] = Z, // SUB
+            [0x30 ... 0x33] = MR, [0x34] = B, [0x35] = Z, // XOR
+            [0x38 ... 0x3b] = MR, [0x3c] = B, [0x3d] = Z, // CMP
+            [0x50 ... 0x5f] = D,
+            [0x63] = MR,
+            [0x68] = D | Z,
+            [0x69] = MR | Z,
+            [0x6a] = D | B,
+            [0x6b] = MR | B,
+            [0x70 ... 0x7f] = B,
+            [0x80] = MR | B,
+            [0x81] = MR | Z,
+            [0x82 ... 0x83] = MR | B,
+            [0x84 ... 0x8e] = MR,
+            [0x8f] = MR | D,
+            [0x9c ... 0x9d] = D,
+            [0xa0 ... 0xa3] = H, // moffs follows address size, not operand size
+            [0xa8] = B,
+            [0xa9] = Z,
+            [0xb0 ... 0xb7] = B,
+            [0xb8 ... 0xbf] = encoding_Iv,
+            [0xc0 ... 0xc1] = MR | B,
+            [0xc2] = D | encoding_Iw,
+            [0xc3] = D,
+            [0xc6] = MR | B,
+            [0xc7] = MR | Z,
+            [0xc8] = D | encoding_IwIb,
+            [0xc9] = D,
+            [0xca] = encoding_Iw,
+            [0xcd] = B,
+            [0xd0 ... 0xd3] = MR,
+            [0xd4 ... 0xd5] = B,
+            [0xd8 ... 0xdf] = MR,
+            [0xe0 ... 0xe7] = B,
+            [0xe8 ... 0xe9] = D | Z,
+            [0xeb] = B,
+            [0xf6 ... 0xf7] = MR | H, // only TEST in group 3 has an immediate
+            [0xfe] = MR,
+            [0xff] = MR | D, // group 5 selects the default width in parse()
+
+            // 0F map: system, SIMD and integer instruction families.
+            [0x100 ... 0x103] = MR,
+            [0x10d] = MR,
+            [0x10f] = MR | B, // 3DNow's trailing opcode byte
+            [0x110 ... 0x123] = MR,
+            [0x128 ... 0x12f] = MR,
+            [0x138] = MR | encoding_extra_byte,
+            [0x13a] = MR | encoding_extra_byte | B,
+            [0x140 ... 0x16f] = MR,
+            [0x170 ... 0x173] = MR | B,
+            [0x174 ... 0x176] = MR,
+            [0x178] = MR | H, // SSE4a 66/F2 forms have two immediate bytes
+            [0x179] = MR,
+            [0x17c ... 0x17f] = MR,
+            [0x180 ... 0x18f] = Z,
+            [0x190 ... 0x19f] = MR,
+            [0x1a3] = MR,
+            [0x1a4] = MR | B,
+            [0x1a5 ... 0x1a7] = MR,
+            [0x1ab] = MR,
+            [0x1ac] = MR | B,
+            [0x1ad ... 0x1af] = MR,
+            [0x1b0 ... 0x1b9] = MR,
+            [0x1ba] = MR | B,
+            [0x1bb ... 0x1bf] = MR,
+            [0x1c0 ... 0x1c1] = MR,
+            [0x1c2] = MR | B,
+            [0x1c3] = MR,
+            [0x1c4 ... 0x1c6] = MR | B,
+            [0x1c7] = MR,
+            [0x1d0 ... 0x1ff] = MR,
+        };
+        // clang-format on
+#pragma clang diagnostic pop
+
+        // Returns the address of the next instruction.
+        int64_t parse(int64_t i) {
+            parts = prefix = seg_prefix = sse_prefix = 0;
+        refetch:
+            code = fetch<uint8_t>(i);
+            VLOG(4) << "opcode = " << std::hex << (int)code;
+
+            switch (code) {
+            case 0x0f: // 0f xx
+                code = 0x100 | fetch<uint8_t>(i);
+                break;
+            case 0x26:
+            case 0x2e: // es, cs
+            case 0x36:
+            case 0x3e: // ss, ds
+            case 0x64:
+            case 0x65: // fs, gs
+                prefix &= prefix_legacy_mask;
+                seg_prefix = code;
+                goto refetch;
+            case 0x40:
+            case 0x41:
+            case 0x42:
+            case 0x43:
+            case 0x44:
+            case 0x45:
+            case 0x46:
+            case 0x47:
+            case 0x48:
+            case 0x49:
+            case 0x4a:
+            case 0x4b:
+            case 0x4c:
+            case 0x4d:
+            case 0x4e:
+            case 0x4f: // rex
+                prefix |= code & prefix_rex_mask;
+                goto refetch;
+            case 0x66: // os
+                prefix &= 0xf0;
+                if (!sse_prefix)
+                    sse_prefix = 1;
+                prefix |= prefix_66h_mask;
+                goto refetch;
+            case 0x67: // as
+                prefix &= prefix_legacy_mask;
+                prefix |= prefix_67h_mask;
+                goto refetch;
+            case 0xf0: // lock
+                prefix &= prefix_legacy_mask;
+                prefix |= prefix_lock_mask;
+                goto refetch;
+            case 0xf2: // repne
+            case 0xf3: // rep
+                sse_prefix = code & 3;
+                prefix &= prefix_legacy_mask;
+                prefix |= prefix_repxx_mask;
+                goto refetch;
+            default:
+                break;
+            }
+            uint8_t encoding_flags = encoding_lut[code];
+            parts |= encoding_flags & (encoding_has_modrm | encoding_extra_byte);
+            if (has_modrm()) {
+                // read extra byte if needed
+                if (unlikely(has_extra())) {
+                    extra = fetch<uint8_t>(i);
+                    VLOG(4) << "extra = " << std::hex << (int)extra;
+                }
+                // parse mod r/m
+                uint8_t modrm = fetch<uint8_t>(i);
+                mod = modrm >> 6;
+                reg = rex_r((modrm >> 3) & 7);
+                uint8_t base_or_rm = rm = rex_b(modrm & 7);
+
+                VLOG(4) << "modrm = " << std::hex << (int)modrm << ", mod = " << (int)mod
+                        << ", reg.r = " << (int)reg << ", rm.b = " << (int)rm;
+                if ((mod != 3) && ((rm & 7) == 4)) {
+                    // read sib
+                    uint8_t sib = fetch<uint8_t>(i);
+                    VLOG(4) << "sib = " << std::hex << (int)sib;
+                    parts |= part_sib;
+                    // parse sib
+                    log_scale = sib >> 6;
+                    index = rex_x((sib >> 3) & 7);
+                    base_or_rm = base = rex_b(sib & 7);
+                    VLOG(4) << std::hex << "log_scale = " << (int)log_scale
+                            << ", index.x = " << (int)index << ", base.b = " << (int)base;
+                }
+                // read displacement
+                switch (mod) {
+                case 0:
+                    if ((base_or_rm & 7) == 5) {
+                        disp = fetch<int32_t>(i);
+                        parts |= part_disp;
+                    } else
+                        disp = 0;
+                    break;
+                case 1:
+                    disp = fetch<int8_t>(i);
+                    parts |= part_disp;
+                    break;
+                case 2:
+                    disp = fetch<int32_t>(i);
+                    parts |= part_disp;
+                    break;
+                case 3:
+                    disp = 0;
+                    break;
+                }
+                if ((parts & part_disp) != 0)
+                    VLOG(4) << "disp = " << std::hex << (int)disp;
+            }
+
+            if (has_rex_w())
+                log_v = 3;
+            else if (has_os_prefix())
+                log_v = 1;
+            else if ((encoding_flags & encoding_default_os_64) != 0) {
+                if (unlikely(code == 0xff))
+                    switch (reg) {
+                    case 2:
+                    case 4:
+                    case 6:
+                        log_v = 3;
+                        break; // CALL Ev, JMP Ev, PUSH Ev
+                    default:
+                        log_v = 2;
+                    }
+                else if (unlikely((code == 0x8f) && (reg != 0)))
+                    log_v = 2; // any 8f /n (n != 0) than POP Ev
+                else
+                    log_v = 3;
+            } else
+                log_v = 2;
+
+            VLOG(4) << "immediate form = " << (int)(encoding_flags & encoding_immediate_mask);
+            switch (encoding_flags & encoding_immediate_mask) {
+            case encoding_no_imm:
+                imm = 0;
+                break;
+            case encoding_Ib:
+                imm = fetch<int8_t>(i);
+                parts |= part_imm;
+                break;
+            case encoding_Iz:
+                imm = (log_v == 1) ? fetch<int16_t>(i) : fetch<int32_t>(i);
+                parts |= part_imm;
+                break;
+            case encoding_Iw:
+                imm = fetch<int16_t>(i);
+                parts |= part_imm;
+                break;
+            case encoding_IwIb:
+                imm = fetch<int16_t>(i);
+                imm2 = fetch<int8_t>(i);
+                parts |= (part_imm | part_imm2);
+                break;
+            case encoding_Iv:
+                parts |= part_imm;
+                switch (log_v) {
+                case 1:
+                    imm = fetch<int16_t>(i);
+                    break;
+                case 2:
+                    imm = fetch<int32_t>(i);
+                    break;
+                case 3:
+                    imm = fetch<int64_t>(i);
+                    break;
+                }
+                break;
+            case encoding_hard:
+                switch (code) {
+                case 0xa0:
+                case 0xa1:
+                case 0xa2:
+                case 0xa3:
+                    imm = address_size_is_64() ? fetch<int64_t>(i) : fetch<uint32_t>(i);
+                    parts |= part_imm;
+                    break;
+                case 0x178:
+                    imm = 0;
+                    if (sse_prefix == 1 || sse_prefix == 2) {
+                        imm = fetch<uint8_t>(i);
+                        imm2 = fetch<uint8_t>(i);
+                        parts |= part_imm | part_imm2;
+                    }
+                    break;
+                case 0xf6:
+                    if ((reg & 6) == 0) {
+                        imm = fetch<int8_t>(i);
+                        parts |= part_imm;
+                    } else
+                        imm = 0;
+                    break;
+                case 0xf7:
+                    if ((reg & 6) == 0) {
+                        imm = (log_v == 1) ? fetch<int16_t>(i) : fetch<int32_t>(i); // Iz
+                        parts |= part_imm;
+                    } else
+                        imm = 0;
+                    break;
+                default:
+                    LOG(DFATAL) << "hard immediate without case. opcode: " << std::hex << (int)code;
+                    code = 0x10b; // bail by invoking known bad opcode UD1
+                    imm = 0;
+                    break;
+                }
+                break;
+            default:
+                LOG(DFATAL) << "unknown immediate encoding "
+                            << (int)(encoding_flags & encoding_immediate_mask);
+                code = 0x10b;
+                imm = 0;
+                break;
+            }
+            if ((parts & part_imm) != 0)
+                VLOG(4) << "imm = " << std::hex << (int)imm;
+            return i;
+        }
+
+        // Registers, memory operands, and diagnostics.
+
+        // we defer the syscall for these until they are used.
+        mutable int64_t m_fs_base;
+        mutable int64_t m_gs_base;
+
+        mutable bool m_fs_base_known;
+        mutable bool m_gs_base_known;
+
+        int64_t fs_base() const {
+            if (unlikely(!m_fs_base_known)) {
+                syscall(SYS_arch_prctl, ARCH_GET_FS, &m_fs_base);
+                m_fs_base_known = true;
+            }
+            return m_fs_base;
+        }
+
+        int64_t gs_base() const {
+            if (unlikely(!m_gs_base_known)) {
+                syscall(SYS_arch_prctl, ARCH_GET_FS, &m_gs_base);
+                m_gs_base_known = true;
+            }
+            return m_gs_base;
+        }
+
+        int64_t seg_base() const {
+            if (seg_prefix == 0x64)
+                return fs_base();
+            else if (seg_prefix == 0x65)
+                return gs_base();
+            else
+                return 0;
+        }
+
+        void print_regs() {
+            using namespace std;
+            for (int i = 0; i < 16; i++)
+                VLOG(0) << os64::reg_name(i) << " " << hex << m_reg[i];
+
+            VLOG(0) << "rip " << hex << m_rip;
+            VLOG(0) << "rflags" << (cf() ? " CF" : "") << (sf() ? " SF" : "") << (of() ? " OF" : "")
+                    << (pf() ? " PF" : "") << (af() ? " AF" : "") << (zf() ? " ZF" : "")
+                    << (df() ? " DF" : "");
+        }
+
+        void print_opcode(int64_t rip, int expected = 0) {
+            using namespace std;
+            ud_t ud;
+            ud_init(&ud);
+            ud_set_mode(&ud, 64);
+            ud_set_syntax(&ud, UD_SYN_ATT);
+            ud_set_input_buffer(&ud, reinterpret_cast<uint8_t *>(rip), 15);
+            ud_set_pc(&ud, rip);
+            size_t bytes = ud_disassemble(&ud);
+            char buf[24];
+            Dl_info info;
+            if (dladdr(reinterpret_cast<void *>(rip), &info)) {
+                snprintf(buf, 24, "%s+%lx", info.dli_sname,
+                         rip - reinterpret_cast<int64_t>(info.dli_saddr));
+            } else {
+                snprintf(buf, 24, "%lx", rip);
+            }
+            VLOG(0) << noshowbase << hex << setfill(' ') << setw(24) << buf << ": " << setw(32)
+                    << left << ud_insn_asm(&ud) << " : " << setfill(' ') << ud_insn_hex(&ud);
+
+            LOG_IF(WARNING, (bytes != expected) && (expected != 0))
+                << "udis86 and jit++ disagree on opcode size! (udis86: " << bytes
+                << " vs. jit++: " << expected << ")";
+        }
+
+        void print_address(int64_t addr) {
+            Dl_info info;
+            if (dladdr(reinterpret_cast<void *>(addr), &info)) {
+                VLOG(2) << info.dli_sname << "+"
+                        << (addr - reinterpret_cast<int64_t>(info.dli_saddr)) << " from "
+                        << info.dli_fname;
+            } else {
+                VLOG(2) << "unresolved address " << std::hex << addr;
+            }
+        }
+
+        inline int32_t eip() const { return static_cast<int32_t>(rip()); }
+        inline int64_t rip() const { return m_rip; }
+        inline int64_t &rip() { return m_rip; }
+
+        int64_t repetitions() const {
+            if (has_repxx_prefix())
+                return 1;
+            else if (address_size_is_64())
+                return ecx();
+            else
+                return rcx();
+        }
+
+        int64_t mem(bool add_segment_base = true) const {
+            int64_t addr = disp;
+            // VLOG(5) << "disp " << std::hex << addr;
+
+            if (add_segment_base)
+                addr += seg_base();
+
+            if (address_size_is_64()) {
+                // VLOG(5) << "64 bit address";
+                if (has_sib()) {
+                    // VLOG(1) << "with sib";
+                    if (((base & 7) != 5) || (mod != 0)) {
+                        addr += get_reg<int64_t>(base);
+                        // VLOG(1) << "addr w/ base " << os64::reg_name(base) << " = " << std::hex
+                        // << addr;
+                    }
+                    if (index != 4) {
+                        addr += get_reg<int64_t>(index) << log_scale;
+                        // VLOG(1) << "addr w/ " << os64::reg_name(index) << " * " << scale() << " =
+                        // " << std::hex << addr;
+                    }
+                } else if (is_rip_relative()) {
+                    addr += rip();
+                    // VLOG(1) << "addr w/ rip (" << std::hex << rip() << ") = " << std::hex <<
+                    // addr;
+                } else
+                    addr += get_reg<int64_t>(rm);
+            } else {
+                // VLOG(1) << "32 bit address";
+                if (has_sib()) {
+                    if (((base & 7) != 5) || mod != 0) {
+                        addr += get_reg<int32_t>(base);
+                    }
+                    if (index != 4) {
+                        addr += get_reg<int32_t>(index) << log_scale;
+                    }
+                } else if (is_rip_relative()) {
+                    addr += eip();
+                } else
+                    addr += get_reg<int32_t>(rm);
+            }
+            // VLOG(1) << "addr = " << std::hex << addr;
+            return addr;
+        }
+
+        inline int8_t &ah() { return reinterpret_cast<int8_t *>(m_reg)[1]; }
+
+        inline int8_t ah() const { return reinterpret_cast<const int8_t *>(m_reg)[1]; }
+
+        inline int64_t &rax() { return m_reg[0]; }
+        inline int64_t &rcx() { return m_reg[1]; }
+        inline int64_t &rdx() { return m_reg[2]; }
+        inline int64_t &rbx() { return m_reg[3]; }
+        inline int64_t &rsp() { return m_reg[4]; }
+        inline int64_t &rbp() { return m_reg[5]; }
+        inline int64_t &rsi() { return m_reg[6]; }
+        inline int64_t &rdi() { return m_reg[7]; }
+        inline int64_t &r8() { return m_reg[8]; }
+        inline int64_t &r9() { return m_reg[9]; }
+        inline int64_t &r10() { return m_reg[10]; }
+        inline int64_t &r11() { return m_reg[11]; }
+        inline int64_t &r12() { return m_reg[12]; }
+        inline int64_t &r13() { return m_reg[13]; }
+        inline int64_t &r14() { return m_reg[14]; }
+        inline int64_t &r15() { return m_reg[15]; }
+
+        inline int64_t rax() const { return m_reg[0]; }
+        inline int64_t rcx() const { return m_reg[1]; }
+        inline int64_t rdx() const { return m_reg[2]; }
+        inline int64_t rbx() const { return m_reg[3]; }
+        inline int64_t rsp() const { return m_reg[4]; }
+        inline int64_t rbp() const { return m_reg[5]; }
+        inline int64_t rsi() const { return m_reg[6]; }
+        inline int64_t rdi() const { return m_reg[7]; }
+        inline int64_t r8() const { return m_reg[8]; }
+        inline int64_t r9() const { return m_reg[9]; }
+        inline int64_t r10() const { return m_reg[10]; }
+        inline int64_t r11() const { return m_reg[11]; }
+        inline int64_t r12() const { return m_reg[12]; }
+        inline int64_t r13() const { return m_reg[13]; }
+        inline int64_t r14() const { return m_reg[14]; }
+        inline int64_t r15() const { return m_reg[15]; }
+
+        inline int32_t eax() const { return m_reg[0]; }
+        inline int32_t ecx() const { return m_reg[1]; }
+        inline int32_t edx() const { return m_reg[2]; }
+        inline int32_t ebx() const { return m_reg[3]; }
+        inline int32_t esp() const { return m_reg[4]; }
+        inline int32_t ebp() const { return m_reg[5]; }
+        inline int32_t esi() const { return m_reg[6]; }
+        inline int32_t edi() const { return m_reg[7]; }
+
+        inline int16_t ax() const { return m_reg[0]; }
+        inline int16_t cx() const { return m_reg[1]; }
+        inline int16_t dx() const { return m_reg[2]; }
+        inline int16_t bx() const { return m_reg[3]; }
+        inline int16_t sp() const { return m_reg[4]; }
+        inline int16_t bp() const { return m_reg[5]; }
+        inline int16_t si() const { return m_reg[6]; }
+        inline int16_t di() const { return m_reg[7]; }
+
+        inline int8_t al() const { return m_reg[0]; }
+        inline int8_t cl() const { return m_reg[1]; }
+        inline int8_t dl() const { return m_reg[2]; }
+        inline int8_t bl() const { return m_reg[3]; }
+
+        template <typename T> inline const char *reg_name(int r) const {
+            typedef typename os<T>::value os;
+            return os::reg_name(r);
+        }
+
+        template <> inline const char *reg_name<int8_t>(int r) const {
+            return byte_reg_name(r, has_rex());
+        }
+
+        template <typename T> inline T get_reg(int r) const;
+        template <> inline int64_t get_reg<>(int r) const { return m_reg[r]; }
+
+        template <> inline int32_t get_reg<>(int r) const { return m_reg[r]; }
+
+        template <> inline int16_t get_reg<>(int r) const { return m_reg[r]; }
+
+        template <> inline int8_t get_reg<>(int r) const {
+            int8_t result = has_rex() ? *reinterpret_cast<const int8_t *>(m_reg + r)
+                                      : *(reinterpret_cast<const int8_t *>(m_reg + (r & 3)) +
+                                          (((r & 4) != 0) ? 1 : 0));
+            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " -> " << std::hex << (int64_t)result;
+            return result;
+        }
+
+        template <typename T> inline void set_reg(int r, T v);
+        template <> inline void set_reg<>(int r, int64_t v) {
+            VLOG(1) << reg_spaces << reg_name<int64_t>(r) << " := " << std::hex << (int64_t)v;
+            m_reg[r] = v;
+        }
+
+        template <> inline void set_reg<>(int r, int32_t v) {
+            // zero extended, not sign extended!
+            VLOG(1) << reg_spaces << reg_name<int32_t>(r) << " := " << std::hex << (int64_t)v;
+            m_reg[r] = (uint64_t)(uint32_t)v;
+        }
+
+        template <> inline void set_reg<>(int r, int16_t v) {
+            VLOG(1) << reg_spaces << reg_name<int16_t>(r) << " := " << std::hex << (int64_t)v;
+            *reinterpret_cast<int16_t *>(m_reg + r) = v;
+        }
+
+        template <> inline void set_reg<>(int r, int8_t v) {
+            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " := " << std::hex << (int64_t)v;
+            if (has_rex())
+                *reinterpret_cast<int8_t *>(m_reg + r) = v;
+            else
+                *(reinterpret_cast<int8_t *>(m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0)) = v;
+        }
+
+        template <typename T> inline T M() const {
+            int64_t addr = mem();
+            T result = *reinterpret_cast<T *>(addr);
+            VLOG(1) << mem_spaces << "*" << std::hex << addr << " -> " << std::hex
+                    << (int64_t)result;
+            return result;
+        }
+
+        template <typename T> inline void M(T v) {
+            int64_t addr = mem();
+            VLOG(1) << mem_spaces << "*" << std::hex << addr << " := " << std::hex << (int64_t)v;
+            *reinterpret_cast<T *>(addr) = v;
+        }
+
+        template <typename T> inline T G() const { return get_reg<T>(reg); }
+
+        template <typename T> inline void G(T v) { set_reg<T>(reg, v); }
+
+        template <typename T> inline T R() const { return get_reg<T>(rm); }
+
+        template <typename T> inline void R(T v) { set_reg<T>(rm, v); }
+
+        template <typename T> inline T E() const { return mod == 3 ? R<T>() : M<T>(); }
+
+        template <typename T> inline void E(T v) {
+            if (mod == 3)
+                R<T>(v);
+            else
+                M<T>(v);
+        }
+
+        template <typename T> void push(T v) {
+            rsp() -= sizeof(T);
+            *reinterpret_cast<T *>(rsp()) = v;
+        }
+
+        template <typename T> T pop() {
+            T result = *reinterpret_cast<T *>(rsp());
+            rsp() += sizeof(T);
+            return result;
+        }
+
+        // Instruction group 1.
+
+        inline int64_t add(int64_t x, int64_t y) { return handle_rflags(add_flags, x + y, x, y); }
+        inline int64_t sub(int64_t x, int64_t y) { return handle_rflags(sub_flags, x - y, x, y); }
+        inline int64_t and_(int64_t x, int64_t y) {
+            VLOG(1) << std::hex << x << " & " << y << " = " << (x & y);
+            return handle_rflags(logic_flags, x & y);
+        }
+        inline int64_t or_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x | y); }
+        inline int64_t xor_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x ^ y); }
+        inline int64_t adc(int64_t x, int64_t y) {
+            if (cf())
+                return handle_rflags(adc_flags, x + y + 1, x, y);
+            else
+                return handle_rflags(add_flags, x + y, x, y);
+        }
+        template <typename T> inline int64_t sbb(int64_t x, int64_t y) {
+            if (cf())
+                return handle_rflags(group_1_traits<T>::sbb_flags, x - y - 1, x, y);
+            else
+                return handle_rflags(sub_flags, x - y, x, y);
+        }
+
+        template <typename T> inline void interpret_group_1(int64_t imm) {
+            switch (reg) {
+            case 0:
+                E<T>(add(E<T>(), imm));
+                return; // ADD E?, I?
+            case 1:
+                E<T>(or_(E<T>(), imm));
+                return; // OR  E?, I?
+            case 2:
+                E<T>(adc(E<T>(), imm));
+                return; // ADC E?, I?
+            case 3:
+                E<T>(sbb<T>(E<T>(), imm));
+                return; // SBB E?, I?
+            case 4:
+                E<T>(and_(E<T>(), imm));
+                return; // AND E?, I?
+            case 5:
+                E<T>(sub(E<T>(), imm));
+                return; // SUB E?, I?
+            case 6:
+                E<T>(xor_(E<T>(), imm));
+                return; // XOR E?, I?
+            case 7:
+                sub(E<T>(), imm);
+                return; // CMP E?, I?
+            default:
+                logic_error();
+            }
+        }
+
+        static inline const flags::handler add_flags = {add_cf, sbb_af, add_of, OSZAPC, 0};
+        static inline const flags::handler adc_flags = {adc_cf, sbb_af, add_of, OSZAPC, 0};
+        static inline const flags::handler sub_flags = {sub_cf, sbb_af, sbb_of, OSZAPC, 0};
+        static inline const flags::handler logic_flags = {bad_flag, bad_flag, bad_flag,
+                                                          SF | ZF | PF, OF | AF | CF};
+
+        // Instruction group 2.
+
+        template <typename T> inline int64_t sal(int64_t x, int count) {
+            return handle_rflags(group_2_traits<T>::sal_flags, x << count, x, count);
+        }
+        template <typename T> inline int64_t sar(int64_t x, int count) {
+            return handle_rflags(group_2_traits<T>::sar_flags, x >> count, x, count);
+        }
+        template <typename T> inline uint64_t shr(uint64_t x, int count) {
+            return handle_rflags(group_2_traits<T>::shr_flags, x >> count, x, count);
+        }
+        template <typename T> inline uint64_t rol(uint64_t x, int count) {
+            return handle_rflags(group_2_traits<T>::rol_flags,
+                                 (x << count) | (x >> (group_2_traits<T>::size - count)), x, count);
+        }
+        template <typename T> inline uint64_t ror(uint64_t x, int count) {
+            return handle_rflags(group_2_traits<T>::ror_flags,
+                                 (x << (group_2_traits<T>::size - count)) | (x >> count), x, count);
+        }
+        template <typename T> inline uint64_t rcl(uint64_t x, int count) {
+            uint64_t carry_bit = cf() ? 1 : 0;
+            uint64_t result = (x << count) | carry_bit << (count - 1);
+            if (count != 1)
+                result |= (x >> (group_2_traits<T>::size + 1 - count));
+            bool carry_result = (x >> (group_2_traits<T>::size - count)) & 1;
+            cf(carry_result);
+            of(carry_result ^ (result < 0));
+            return result;
+        }
+        template <typename T> inline uint64_t rcr(uint64_t x, int count) {
+            uint64_t carry_bit = cf() ? 1 : 0;
+            uint64_t result = (x >> count) | (carry_bit << (group_2_traits<T>::size - count));
+            if (count != 1)
+                result |= (x << (group_2_traits<T>::size + 1 - count));
+            bool carry_result = (x >> (count - 1)) & 1;
+            cf(carry_result);
+            of(((result << 1) & result) < 0);
+            return result;
+        }
+
+        template <typename T> inline uint64_t shrd(uint64_t x, uint64_t y, int count) {
+            return handle_rflags(group_2_traits<T>::shrd_flags,
+                                 (y << (group_2_traits<T>::size - count)) | (x >> count), x, count);
+        }
+
+        template <typename T> void interpret_group_2(int count) {
+            count &= group_2_traits<T>::mask;
+            if (!count)
+                return;
+            switch (reg) {
+            case 0:
+                E<T>(rol<T>(E<T>(), count));
+                return; // ROL E?,??
+            case 1:
+                E<T>(ror<T>(E<T>(), count));
+                return; // ROR E?,??
+            case 2:
+                E<T>(rcl<T>(E<T>(), count));
+                return; // RCL E?,??
+            case 3:
+                E<T>(rcr<T>(E<T>(), count));
+                return; // RCR E?,??
+            case 4:
+                E<T>(sal<T>(E<T>(), count));
+                return; // SHL E?,??
+            case 5:
+                E<T>(shr<T>(E<T>(), count));
+                return; // SHR E?,??
+            case 6:
+                E<T>(sal<T>(E<T>(), count));
+                return; // SAL E?,?? = SHL E?,??
+            case 7:
+                E<T>(sar<T>(E<T>(), count));
+                return; // SAR E?,??
+            }
+            logic_error();
+        }
+
+        // Instruction group 3.
+
+        template <typename T> inline int64_t neg(int64_t x) {
+            return handle_rflags(group_3_traits<T>::neg_flags, -x);
+        }
+
+        template <typename T> inline void mul();
+        template <> inline void mul<int64_t>() {
+            int64_t rax = get_reg<int64_t>(0);
+            int64_t rdx;
+            int64_t multiplier = E<int64_t>();
+            int8_t o, c;
+            __asm__("mulq %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(rax), "=d"(rdx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(rax));
+            set_reg<int64_t>(0, rax);
+            set_reg<int64_t>(2, rdx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void mul<int32_t>() {
+            int32_t eax = get_reg<int32_t>(0);
+            int32_t edx;
+            int32_t multiplier = E<int32_t>();
+            int8_t o, c;
+            __asm__("mul %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(eax), "=d"(edx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(eax));
+            set_reg<int32_t>(0, eax);
+            set_reg<int32_t>(2, edx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void mul<int16_t>() {
+            int16_t ax = get_reg<int16_t>(0);
+            int16_t dx;
+            int16_t multiplier = E<int16_t>();
+            int8_t o, c;
+            __asm__("mulw %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(ax), "=d"(dx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(ax));
+            set_reg<int16_t>(0, ax);
+            set_reg<int16_t>(2, dx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void mul<int8_t>() {
+            int8_t al = get_reg<int8_t>(0);
+            int16_t ax;
+            int8_t multiplier = E<int8_t>();
+            int8_t o, c;
+            __asm__("mulb %3\n\tseto %1\n\tsetc %2"
+                    : "=a"(ax), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(al));
+            set_reg<int16_t>(0, ax);
+            of(o);
+            cf(c);
+        }
+
+        template <typename T> inline void imul();
+        template <> inline void imul<int64_t>() {
+            int64_t rax = get_reg<int64_t>(0);
+            int64_t rdx;
+            int64_t multiplier = E<int64_t>();
+            int8_t o, c;
+            __asm__("imulq %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(rax), "=d"(rdx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(rax));
+            set_reg<int64_t>(0, rax);
+            set_reg<int64_t>(2, rdx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void imul<int32_t>() {
+            int32_t eax = get_reg<int32_t>(0);
+            int32_t edx;
+            int32_t multiplier = E<int32_t>();
+            int8_t o, c;
+            __asm__("imul %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(eax), "=d"(edx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(eax));
+            set_reg<int32_t>(0, eax);
+            set_reg<int32_t>(2, edx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void imul<int16_t>() {
+            int16_t ax = get_reg<int16_t>(0);
+            int16_t dx;
+            int16_t multiplier = E<int16_t>();
+            int8_t o, c;
+            __asm__("imulw %4\n\tseto %2\n\tsetc %3"
+                    : "=a"(ax), "=d"(dx), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(ax));
+            set_reg<int16_t>(0, ax);
+            set_reg<int16_t>(2, dx);
+            of(o);
+            cf(c);
+        }
+
+        template <> inline void imul<int8_t>() {
+            int8_t al = get_reg<int8_t>(0);
+            int16_t ax;
+            int8_t multiplier = E<int8_t>();
+            int8_t o, c;
+            __asm__("imulb %3\n\tseto %1\n\tsetc %2"
+                    : "=a"(ax), "=q"(o), "=q"(c)
+                    : "q"(multiplier), "a"(al));
+            set_reg<int16_t>(0, ax);
+            of(o);
+            cf(c);
+        }
+
+        template <typename T> inline void div();
+        template <> inline void div<int64_t>() {
+            int64_t rax = get_reg<int64_t>(0);
+            int64_t rdx = get_reg<int64_t>(2);
+            int64_t divisor = E<int64_t>();
+            __asm__("divq %2" : "=a"(rax), "=d"(rdx) : "q"(divisor), "a"(rax), "d"(rdx));
+            set_reg<int64_t>(0, rax);
+            set_reg<int64_t>(2, rdx);
+        }
+
+        template <> inline void div<int32_t>() {
+            int32_t eax = get_reg<int32_t>(0);
+            int32_t edx = get_reg<int32_t>(2);
+            int32_t divisor = E<int32_t>();
+            __asm__("divl %2" : "=a"(eax), "=d"(edx) : "q"(divisor), "a"(eax), "d"(edx));
+            set_reg<int32_t>(0, eax);
+            set_reg<int32_t>(2, edx);
+        }
+
+        template <> inline void div<int16_t>() {
+            int16_t ax = get_reg<int16_t>(0);
+            int16_t dx = get_reg<int16_t>(2);
+            int16_t divisor = E<int16_t>();
+            __asm__("divw %2" : "=a"(ax), "=d"(dx) : "q"(divisor), "a"(ax), "d"(dx));
+            set_reg<int16_t>(0, ax);
+            set_reg<int16_t>(2, dx);
+        }
+
+        template <> inline void div<int8_t>() {
+            int16_t ax = get_reg<int64_t>(0);
+            int8_t divisor = E<int64_t>();
+            __asm__("divb %1" : "=a"(ax) : "q"(divisor), "a"(ax));
+            set_reg<int16_t>(0, ax);
+        }
+
+        template <typename T> inline void idiv();
+        template <> inline void idiv<int64_t>() {
+            int64_t rax = get_reg<int64_t>(0);
+            int64_t rdx = get_reg<int64_t>(2);
+            int64_t idivisor = E<int64_t>();
+            __asm__("idivq %2" : "=a"(rax), "=d"(rdx) : "q"(idivisor), "a"(rax), "d"(rdx));
+            set_reg<int64_t>(0, rax);
+            set_reg<int64_t>(2, rdx);
+        }
+
+        template <> inline void idiv<int32_t>() {
+            int32_t eax = get_reg<int32_t>(0);
+            int32_t edx = get_reg<int32_t>(2);
+            int32_t idivisor = E<int32_t>();
+            __asm__("idivl %2" : "=a"(eax), "=d"(edx) : "q"(idivisor), "a"(eax), "d"(edx));
+            set_reg<int32_t>(0, eax);
+            set_reg<int32_t>(2, edx);
+        }
+
+        template <> inline void idiv<int16_t>() {
+            int16_t ax = get_reg<int16_t>(0);
+            int16_t dx = get_reg<int16_t>(2);
+            int16_t idivisor = E<int16_t>();
+            __asm__("idivw %2" : "=a"(ax), "=d"(dx) : "q"(idivisor), "a"(ax), "d"(dx));
+            set_reg<int16_t>(0, ax);
+            set_reg<int16_t>(2, dx);
+        }
+
+        template <> inline void idiv<int8_t>() {
+            int16_t ax = get_reg<int64_t>(0);
+            int8_t idivisor = E<int64_t>();
+            __asm__("idivb %1" : "=a"(ax) : "q"(idivisor), "a"(ax));
+            set_reg<int16_t>(0, ax);
+        }
+
+        template <typename T> inline void interpret_group_3() {
+            switch (reg) {
+            case 0 ... 1:
+                and_(E<T>(), imm);
+                return; // TEST E?, I?*
+            case 2:
+                E<T>(~E<T>());
+                return; // NOT E?
+            case 3:
+                E<T>(neg<T>(E<T>()));
+                return; // NEG E?
+            case 4:
+                mul<T>();
+                return; // MUL E?
+            case 5:
+                imul<T>();
+                return; // IMUL E?
+            case 6:
+                div<T>();
+                return; // DIV E?
+            case 7:
+                idiv<T>();
+                return; // DIV E?
+            default:
+                unsupported();
+            }
+        }
+
+        // Instruction group 4.
+
+        template <typename T> inline int64_t inc(int64_t x) {
+            return handle_rflags(group_4_traits<T>::inc_flags, x + 1);
+        }
+        template <typename T> inline int64_t dec(int64_t x) {
+            return handle_rflags(group_4_traits<T>::dec_flags, x - 1);
+        }
+        template <typename T> inline void interpret_group_4() {
+            switch (reg) {
+            case 0:
+                E<T>(inc<T>(E<T>()));
+                return;
+            case 1:
+                E<T>(dec<T>(E<T>()));
+                return;
+            default:
+                illegal();
+            }
+        }
+
+        // Instruction group 5.
+
+        template <typename T> inline void interpret_group_5() {
+            switch (reg) {
+            case 0:
+                E<T>(inc<T>(E<T>()));
+                return; // INC Ev
+            case 1:
+                E<T>(dec<T>(E<T>()));
+                return; // DEC Ev
+            case 2:
+                push<T>(rip());
+                rip() = E<T>();
+                return; // CALL Ev
+            case 3:
+                unsupported();
+            case 4:
+                rip() = E<T>();
+                return; // JMP Ev
+            case 5:
+                unsupported();
+            case 6:
+                push<T>(E<T>());
+                return; // PUSH Ev
+            case 7:
+                illegal();
+            default:
+                unsupported();
+            }
+        } // interpret_group_5
+
+        // Instruction group 6.
+
+        inline uint16_t str() {
+            uint16_t result;
+            asm("str %0" : "=q"(result)::"memory");
+            return result;
+        }
+        inline void verr(int16_t selector) {
+            int8_t zero;
+            asm("verr %1; setz %0" : "=q"(zero) : "q"(selector) : "memory");
+            zf(zero != 0);
+        }
+        inline void verw(int16_t selector) {
+            int8_t zero;
+            asm("verw %1; setz %0" : "=q"(zero) : "q"(selector) : "memory");
+            zf(zero != 0);
+        }
+        template <typename os> inline void interpret_group_6() {
+            // memory operand
+            switch (reg) {
+            case 0:
+                uninterpretable(); // SLDT Mw/Rv
+            case 1:                // STR Mw/Rv
+                if (mod == 3)
+                    R<typename os::v>(str()); // zero extended
+                else
+                    M<int16_t>(str());
+            case 2:
+                uninterpretable(); // LLDT Mw/Rv
+            case 3:
+                uninterpretable(); // LTR Mw/Rv
+            case 4:
+                verr(E<int16_t>()); // VERR Mw/Rv
+            case 5:
+                verw(E<int16_t>()); // VERW Mw/Rv
+            case 6:
+                uninterpretable(); // JMPE Ev (Itanium only)
+            case 7:
+                illegal();
+            default:
+                logic_error();
+            }
+        } // interpret_group_6
+
+        // Instruction group 7.
+
+        // output TSC into EDX:EAX and TSC_AUX into ECX
+        void rdtscp() {
+            int64_t RAX, RCX, RDX;
+            __asm__ __volatile__("rdtsc" : "=a"(RAX), "=d"(RDX), "=c"(RCX)::"memory");
+            rax() = RAX;
+            rcx() = RCX;
+            rdx() = RDX;
+        }
+        // monitor a linear region of memory starting at RAX for changes
+        inline void monitor() {
+            int64_t RAX = rax();
+            int64_t RCX = rcx();
+            int64_t RDX = rdx();
+            __asm__ __volatile__("monitor" ::"a"(RAX), "c"(RCX), "d"(RDX) : "memory");
+        }
+        // wait for the changes we are monitoring to occur
+        inline void mwait() {
+            int64_t RAX = rax();
+            int64_t RCX = rcx();
+            __asm__ __volatile__("mwait" ::"a"(RAX), "c"(RCX) : "memory");
+        }
+        uint64_t smsw() {
+            uint64_t result;
+            __asm__("smsw %0" : "=q"(result)::"memory");
+            return result;
+        }
+        template <typename os> inline void interpret_group_7() {
+            if (mod != 3) {
+                // memory operand
+                switch (reg) {
+                case 0:
+                    uninterpretable(); // SGDT Ms
+                case 1:
+                    uninterpretable(); // SIDT Ms
+                case 2:
+                    uninterpretable(); // LDGT Ms
+                case 3:
+                    uninterpretable(); // LIDT Ms
+                case 4:
+                    M<uint16_t>(smsw()); // SMSW Mw -- this we CAN execute!
+                case 5:
+                    illegal();
+                case 6:
+                    uninterpretable(); // LMSW Mw
+                case 7:
+                    uninterpretable(); // INVLPG Mb
+                default:
+                    logic_error();
+                }
+            } else {
+                switch (reg) {
+                case 0:
+                    switch (rm) {
+                    case 1 ... 4:
+                        uninterpretable(); // VMCALL, VMLAUNCH, VMRESUME, VMXOFF
+                    default:
+                        illegal();
+                    }
+                case 1:
+                    switch (rm) {
+                    case 0:
+                        monitor();
+                        return; // MONITOR
+                    case 1:
+                        mwait();
+                        return; // MWAIT
+                    default:
+                        illegal();
+                    }
+                case 2:
+                    switch (rm) {
+                    case 0 ... 1:
+                        unsupported(); // XGETBV, XSETBV
+                    default:
+                        illegal();
+                    }
+                case 3:
+                    uninterpretable(); // VMRUN, VMMCALL, VMLOAD, VMSAVE, STGI, CLGI, SKINIT,
+                                       // INVLPGA
+                case 4:
+                    R<typename os::v>(smsw());
+                    return; // SMSW Rv
+                case 5:
+                    illegal();
+                case 6:
+                    uninterpretable(); // LMSW Rw
+                case 7:
+                    switch (rm) {
+                    case 0:
+                        uninterpretable(); // SWAPGS
+                    case 1:
+                        rdtscp();
+                        return;
+                    default:
+                        illegal();
+                    }
+                }
+            }
+        } // interpret_group_7
+
+        // Miscellaneous instructions.
+
+        template <typename T> inline void cmpxchg() {
+            int8_t value = E<T>();
+            if (zf(value == get_reg<T>(0)))
+                E<T>(G<T>());
+            else
+                set_reg<T>(0, value);
+        }
+        template <typename T> inline void xchg() {
+            T t = G<T>();
+            G<T>(E<T>());
+            E<T>(t);
+        }
+        template <typename T> inline void xchg(int r) {
+            T t = get_reg<T>(r);
+            set_reg<T>(r, get_reg<T>(0));
+            set_reg<T>(0, t);
+        }
+
+        template <typename T> inline void movs() {
+            int64_t base = seg_base();
+            T *s = reinterpret_cast<T *>(base + rsi());
+            T *d = reinterpret_cast<T *>(rdi());
+            int count = repetitions();
+            VLOG(1) << "movs:"
+                    << " copying " << count << " " << sizeof(T) << " byte chunks from " << std::hex
+                    << (base + rsi()) << " to " << rdi() << (df() ? " descending" : "");
+            if (df())
+                while (count-- != 0)
+                    *s-- = *d--;
+            else
+                while (count-- != 0)
+                    *s++ = *d++;
+            // TODO: initialize any flags here ?
+            rsi() = reinterpret_cast<int64_t>(s) - base;
+            rdi() = reinterpret_cast<int64_t>(d);
+        }
+
+        void syscall_() {
+            int64_t RAX = rax();
+            VLOG(1) << "executing syscall " << std::hex << RAX;
+            if (RAX == 0xe7)
+                uninterpretable(); // stop interpreting for exit syscall
+            int64_t RBX = rbx();
+            int64_t RDX = rdx();
+            int64_t RSI = rsi();
+            int64_t RDI = rdi();
+
+            // HACK: is there a better way to specify these constraints directly?
+            register int64_t R8 asm("r8") = r8();
+            register int64_t R9 asm("r9") = r9();
+            register int64_t R11 asm("r11");
+
+            __asm__ __volatile__("syscall"
+                                 : "=a"(RAX), "=b"(RBX), "=r"(R11)
+                                 : "a"(RAX), "b"(RBX), "d"(RDX), "r"(R9), "R"(RSI), "D"(RDI),
+                                   "r"(R8)
+                                 : "memory", "cc", "cx");
+
+            rax() = RAX;
+            rbx() = RBX;
+            r11() = R11;
+        }
+
+        void wbinvd() { __asm__ __volatile__("wbinvd" ::: "memory"); }
+
+        void invd() { __asm__ __volatile__("invd" ::: "memory"); }
+
+        void wrmsr() {
+            int64_t RAX = rax();
+            int64_t RCX = rcx();
+            int64_t RDX = rdx();
+            __asm__ __volatile__("wrmsr" ::"a"(RAX), "c"(RCX), "d"(RDX) : "memory");
+        }
+
+        void rdmsr() {
+            int64_t RCX = rax();
+            int64_t RAX, RDX;
+            __asm__ __volatile__("rdmsr" : "=a"(RAX), "=d"(RDX) : "c"(RCX) : "memory");
+            rax() = RAX;
+            rdx() = RDX;
+        }
+
+        void rdtsc() {
+            int64_t RAX, RDX;
+            __asm__ __volatile__("rdtsc" : "=a"(RAX), "=d"(RDX)::"memory");
+            rax() = RAX;
+            rdx() = RDX;
+        }
+
+        void rdpmc() {
+            int64_t RCX = rax();
+            int64_t RAX, RDX;
+            __asm__ __volatile__("rdmsr" : "=a"(RAX), "=d"(RDX) : "c"(RCX) : "memory");
+            rax() = RAX;
+            rdx() = RDX;
+        }
+
+        int64_t lsl(int16_t descriptor) {
+            int64_t result;
+            int8_t zero;
+            __asm__("lsl %2,%0; setz %1"
+                    : "=q"(result), "=q"(zero)
+                    : "q"(descriptor)
+                    : "memory", "cc");
+            zf(zero != 0);
+            return result;
+        }
+
+        int64_t lar(int16_t descriptor) {
+            int64_t result;
+            int8_t zero;
+            __asm__("lar %2,%0; setz %1"
+                    : "=q"(result), "=q"(zero)
+                    : "q"(descriptor)
+                    : "memory", "cc");
+            zf(zero != 0);
+            return result;
+        }
+
+        // Opcode dispatch.
+
+        template <typename os> inline void interpret_opcode() {
+            typedef int8_t b;
+            typedef int16_t w;
+            typedef int32_t d;
+            typedef typename os::v v;
+            typedef typename os::z z;
+
+            switch (code) {
+            case 0x00:
+                E<b>(add(E<b>(), G<b>()));
+                return; // ADD Eb, Gb
+            case 0x01:
+                E<v>(add(E<v>(), G<v>()));
+                return; // ADD Ev, Gv
+            case 0x02:
+                G<b>(add(G<b>(), E<b>()));
+                return; // ADD Gb, Eb
+            case 0x03:
+                G<v>(add(G<v>(), E<v>()));
+                return; // ADD Gv, Ev
+            case 0x04:
+                set_reg<b>(0, add(get_reg<b>(0), imm));
+                return; // ADD AL, Ib
+            case 0x05:
+                set_reg<v>(0, add(get_reg<v>(0), imm));
+                return; // ADD rAX, Iz
+            case 0x06:
+                illegal(); // PUSH ES
+            case 0x07:
+                illegal(); // POP ES
+            case 0x08:
+                E<b>(or_(E<b>(), G<b>()));
+                return; // OR Eb, Gb
+            case 0x09:
+                E<v>(or_(E<v>(), G<v>()));
+                return; // OR Ev, Gv
+            case 0x0a:
+                G<b>(or_(G<b>(), E<b>()));
+                return; // OR Gb, Eb
+            case 0x0b:
+                G<v>(or_(G<v>(), E<v>()));
+                return; // OR Gv, Ev
+            case 0x0c:
+                set_reg<b>(0, or_(get_reg<b>(0), imm));
+                return; // OR AL, Ib
+            case 0x0d:
+                set_reg<v>(0, or_(get_reg<v>(0), imm));
+                return; // OR rAX, Iz
+            case 0x0e:
+                illegal(); // PUSH CS
+            case 0x0f:
+                unsupported(); // 3DNow! 0F 0F prefixes not supported
+            case 0x10:
+                E<b>(adc(E<b>(), G<b>()));
+                return; // ADC Eb, Gb
+            case 0x11:
+                E<v>(adc(E<v>(), G<v>()));
+                return; // ADC Ev, Gv
+            case 0x12:
+                G<b>(adc(G<b>(), E<b>()));
+                return; // ADC Gb, Eb
+            case 0x13:
+                G<v>(adc(G<v>(), E<v>()));
+                return; // ADC Gv, Ev
+            case 0x14:
+                set_reg<b>(0, adc(get_reg<b>(0), imm));
+                return; // ADC AL, Ib
+            case 0x15:
+                set_reg<v>(0, adc(get_reg<v>(0), imm));
+                return; // ADC rAX, Iz
+            case 0x16:
+                illegal(); // PUSH SS
+            case 0x17:
+                illegal(); // POP SS
+            case 0x18:
+                E<b>(sbb<b>(E<b>(), G<b>()));
+                return; // SBB Eb, Gb
+            case 0x19:
+                E<v>(sbb<v>(E<v>(), G<v>()));
+                return; // SBB Ev, Gv
+            case 0x1a:
+                G<b>(sbb<b>(G<b>(), E<b>()));
+                return; // SBB Gb, Eb
+            case 0x1b:
+                G<v>(sbb<v>(G<v>(), E<v>()));
+                return; // SBB Gv, Ev
+            case 0x1c:
+                set_reg<b>(0, sbb<b>(get_reg<b>(0), imm));
+                return; // SBB AL, Ib
+            case 0x1d:
+                set_reg<v>(0, sbb<v>(get_reg<v>(0), imm));
+                return; // SBB rAX, Iz
+            case 0x1e:
+                illegal(); // PUSH DS
+            case 0x1f:
+                illegal(); // POP DS
+            case 0x20:
+                E<b>(and_(E<b>(), G<b>()));
+                return; // AND Eb, Gb
+            case 0x21:
+                E<v>(and_(E<v>(), G<v>()));
+                return; // AND Ev, Gv
+            case 0x22:
+                G<b>(and_(G<b>(), E<b>()));
+                return; // AND Gb, Eb
+            case 0x23:
+                G<v>(and_(G<v>(), E<v>()));
+                return; // AND Gv, Ev
+            case 0x24:
+                set_reg<b>(0, and_(get_reg<b>(0), imm));
+                return; // AND AL, Ib
+            case 0x25:
+                set_reg<v>(0, and_(get_reg<v>(0), imm));
+                return; // AND rAX, Iz
+            case 0x27:
+                illegal(); // DAA
+            case 0x26:
+                logic_error(); // ES: prefix
+            case 0x28:
+                E<b>(sub(E<b>(), G<b>()));
+                return; // SUB Eb, Gb
+            case 0x29:
+                E<v>(sub(E<v>(), G<v>()));
+                return; // SUB Ev, Gv
+            case 0x2a:
+                G<b>(sub(G<b>(), E<b>()));
+                return; // SUB Gb, Eb
+            case 0x2b:
+                G<v>(sub(G<v>(), E<v>()));
+                return; // SUB Gv, Ev
+            case 0x2c:
+                set_reg<b>(0, sub(get_reg<b>(0), imm));
+                return; // SUB AL, Ib
+            case 0x2d:
+                set_reg<v>(0, sub(get_reg<v>(0), imm));
+                return; // SUB rAX, Iz
+            case 0x2e:
+                logic_error(); // CS: prefix
+            case 0x2f:
+                illegal(); // DAS
+            case 0x30:
+                E<b>(xor_(E<b>(), G<b>()));
+                return; // XOR Eb, Gb
+            case 0x31:
+                E<v>(xor_(E<v>(), G<v>()));
+                return; // XOR Ev, Gv
+            case 0x32:
+                G<b>(xor_(G<b>(), E<b>()));
+                return; // XOR Gb, Eb
+            case 0x33:
+                G<v>(xor_(G<v>(), E<v>()));
+                return; // XOR Gv, Ev
+            case 0x34:
+                set_reg<b>(0, xor_(get_reg<b>(0), imm));
+                return; // XOR AL, Ib
+            case 0x35:
+                set_reg<v>(0, xor_(get_reg<v>(0), imm));
+                return; // XOR rAX, Iz
+            case 0x36:
+                logic_error(); // SS: prefix
+            case 0x37:
+                illegal(); // AAA
+            case 0x38:
+                sub(E<b>(), G<b>());
+                return; // CMP Eb, Gb
+            case 0x39:
+                sub(E<v>(), G<v>());
+                return; // CMP Ev, Gv
+            case 0x3a:
+                sub(G<b>(), E<b>());
+                return; // CMP Gb, Eb
+            case 0x3b:
+                sub(G<v>(), E<v>());
+                return; // CMP Gv, Ev
+            case 0x3c:
+                sub(get_reg<b>(0), imm);
+                return; // CMP AL, Ib
+            case 0x3d:
+                sub(get_reg<v>(0), imm);
+                return; // CMP rAX, Iz
+            case 0x3e:
+                logic_error(); // DS: prefix
+            case 0x3f:
+                illegal(); // AAS
+            case 0x40 ... 0x4f:
+                logic_error(); // REX prefix
+            case 0x50 ... 0x57:
+                push<v>(get_reg<v>(rex_b(code & 7)));
+                return; // PUSH rXX
+            case 0x58 ... 0x5f:
+                set_reg<v>(rex_b(code & 7), pop<v>());
+                return; // POP rXX
+            case 0x60:
+                illegal(); // PUSHA
+            case 0x61:
+                illegal(); // POPA
+            case 0x62:
+                illegal(); // BOUND Gv,Ma
+            case 0x63:
+                G<v>(E<d>());
+                return; // MOVSXD Gv, Ed // formerly ARPL Ew, Gw
+            case 0x64:
+                logic_error(); // FS: prefix
+            case 0x65:
+                logic_error(); // GS: prefix
+            case 0x66:
+                logic_error(); // OS prefix
+            case 0x67:
+                logic_error(); // AS prefix
+            case 0x68:
+                push<v>(imm);
+                return; // PUSH Iz
+            case 0x69:
+                unsupported(); // TODO: IMUL Gv,Ev,Iz
+            case 0x6a:
+                push<v>(imm);
+                return; // PUSH Ib (check stack slot size?)
+            case 0x6b:
+                unsupported(); // TODO: IMUL Gv,Ev,Ib
+            case 0x6c:
+                unsupported(); // TODO: INS Yb, DX
+            case 0x6d:
+                unsupported(); // TODO: INS Yz, DX
+            case 0x6e:
+                unsupported(); // TODO: OUTS DX, Xb
+            case 0x6f:
+                unsupported();  // TODO: OUTS DX, Xz
+            case 0x70 ... 0x7f: // JCC Ib
+                if (test_cc(code & 0xf))
+                    rip() += imm;
+                return;
+
+            case 0x80:
+                interpret_group_1<b>(imm);
+                return; // group #1 Eb, Ib
+            case 0x81:
+                interpret_group_1<v>(imm);
+                return; // group #1 Ev, Iz
+            case 0x82:
+                illegal(); // group #1* Eb, Ib
+            case 0x83:
+                interpret_group_1<v>(imm);
+                return; // group #1 Ev, Ib
+            case 0x84:
+                and_(E<b>(), G<b>());
+                return; // TEST Eb, Gb
+            case 0x85:
+                and_(E<v>(), G<v>());
+                return; // TEST Ev, Gv
+            case 0x86:
+                xchg<b>();
+                return; // XCHG Eb,Gb
+            case 0x87:
+                xchg<v>();
+                return; // XCHG Ev,Gv
+            case 0x88:
+                E<b>(G<b>());
+                return; // MOV Eb,Gb
+            case 0x89:
+                E<v>(G<v>());
+                return; // MOV Ev,Gv
+            case 0x8a:
+                G<b>(E<b>());
+                return; // MOV Gb,Eb
+            case 0x8b:
+                G<v>(E<v>());
+                return; // MOV Gv,Ev
+            case 0x8c:
+                unsupported(); // MOV Rv, Sw or MOV Mw,Sw
+            case 0x8d:
+                G<v>(mem(false));
+                return; // LEA Gv, M
+            case 0x8e:
+                unsupported(); // MOV Sw, Mw or MOV Sw,Rv
+            case 0x8f:         // POP Ev (8F /0) (group 10)
+                if (reg != 0)
+                    illegal();
+                E<v>(pop<v>());
+                return;
+            case 0x90:
+                asm("pause");
+                return;         // PAUSE (NOP 90)
+            case 0x91 ... 0x97: // XCHG rXX, rAX
+                xchg<v>(rex_b(code & 7));
+                return;
+            case 0x98: // CBW, CWDE,CDQE (sign extend one size, staying in reg 1)
+                set_reg<v>(0, get_reg<typename os::smaller_size>(0));
+                return;
+            case 0x99: // CWD, CDQ, CQO (copy sign bit in rAX to all bits of rDX)
+                set_reg<v>(2, get_reg<v>(0) < 0 ? -1 : 0);
+                return;
+            case 0x9a:
+                illegal(); // CALL Ap
+            case 0x9b:
+                unsupported(); // WAIT, FWAIT
+            case 0x9c:
+                push<v>(rflags());
+                return; // PUSHF
+            case 0x9d:
+                rflags() = pop<v>();
+                return; // POPF
+            case 0x9e:  // SAHF if CPUID.AHF = 1
+                rflags() = (rflags() & ~0xff) | ah();
+                return;
+            case 0x9f: // LAHF if CPUID.AHF = 1
+                ah() = static_cast<uint8_t>(rflags() & 0xff);
+                return;
+            case 0xa4:
+                movs<b>();
+                return; // REP? MOVSB
+            case 0xa5:
+                movs<v>();
+                return; // REP? MOVS[WDQ]
+            case 0xa8:
+                and_(al(), imm);
+                return; // TEST AL, Ib
+            case 0xa9:
+                and_(get_reg<v>(0), imm);
+                return;         // TEST rAX, Iz
+            case 0xb0 ... 0xb7: // MOV RXXB, Ib
+                set_reg<b>(rex_b(code & 7), imm);
+                return;
+            case 0xb8 ... 0xbf: // MOV RXX, Iq
+                set_reg<v>(rex_b(code & 7), imm);
+                return;
+            case 0xc0:
+                interpret_group_2<b>(imm);
+                return; // group 2 Eb, Ib
+            case 0xc1:
+                interpret_group_2<v>(imm);
+                return; // group 2 Ev, Ib
+            case 0xc2:
+                rip() = pop<v>();
+                rsp() += static_cast<uint16_t>(imm);
+                return; // RET (Near) Iw
+            case 0xc3:
+                rip() = pop<v>();
+                return; // RET (Near)
+            case 0xc4:
+                illegal(); // LES Gz,Mp
+            case 0xc5:
+                illegal(); // LDS Gz,Mp
+            case 0xc6:     // MOV Eb, Ib (group #12)
+                if (reg != 0)
+                    illegal();
+                E<b>(imm);
+                return;
+            case 0xc7: // MOV Ev, Iz (group #12)
+                if (reg != 0)
+                    illegal();
+                E<v>(imm);
+                return;
+            case 0xc9: // LEAVE
+                rsp() = rbp();
+                rbp() = pop<v>();
+                return;
+            case 0xcc:
+                unsupported(); // INT3
+            case 0xce:
+                illegal(); // INTO
+            case 0xd0:
+                interpret_group_2<b>(1);
+                return; // group 2 Eb, 1
+            case 0xd1:
+                interpret_group_2<v>(1);
+                return; // group 2 Ev, 1
+            case 0xd2:
+                interpret_group_2<b>(cl());
+                return; // group 2 Eb, CL
+            case 0xd3:
+                interpret_group_2<v>(cl());
+                return; // group 2 Ev, CL
+            case 0xd4:
+                illegal(); // AAM Ib
+            case 0xd5:
+                illegal(); // AAD Ib
+            case 0xd6:
+                illegal(); // SALC
+            case 0xe8:     // CALL Jz
+                push<v>(rip());
+                rip() += imm;
+                return;
+            case 0xe9:
+                rip() += imm;
+                return; // JMP Jz
+            case 0xea:
+                illegal(); // JMP Ap
+            case 0xeb:
+                rip() += imm;
+                return; // JMP Jb
+            case 0xf4:
+                uninterpretable(); // HLT
+            case 0xf6:
+                interpret_group_3<b>();
+                return; // group 3 Eb
+            case 0xf7:
+                interpret_group_3<v>();
+                return; // group 3 Ev
+            case 0xf8:
+                cf(false);
+                return; // CLC
+            case 0xf9:
+                cf(true);
+                return; // STC
+            case 0xfa:
+                uninterpretable(); // CLI
+            case 0xfb:
+                uninterpretable(); // STI
+            case 0xfc:
+                df(false);
+                return; // CLD
+            case 0xfd:
+                df(true);
+                return; // STD
+            case 0xfe:
+                interpret_group_4<b>();
+                return; // group 4 Eb
+            case 0xff:
+                interpret_group_5<v>();
+                return; // group 5 Ev
+            case 0x100:
+                interpret_group_6<os>();
+                return; // group 6
+            case 0x101:
+                interpret_group_7<os>();
+                return; // group 7
+            case 0x102:
+                G<v>(lar(E<w>()));
+                return; // LAR Gv, Ew
+            case 0x103:
+                G<v>(lsl(E<w>()));
+                return; // LSL Gv, Ew
+            case 0x110 ... 0x113:
+                uninterpretable(); // UMOV
+            case 0x105:
+                syscall_();
+                return; // SYSCALL (wrapped above)
+            case 0x106:
+                uninterpretable(); // CLTS
+            case 0x107:
+                uninterpretable(); // SYSRET
+            case 0x108:
+                invd();
+                return;
+            case 0x109:
+                wbinvd();
+                return;
+            case 0x10b:
+                illegal(); // UD2
+            case 0x118 ... 0x11f:
+                return; // PREFETCH M, NOP Ev and HINT NOP Ev
+            case 0x120:
+                unsupported(); // MOV Rd,Cd
+            case 0x121:
+                unsupported(); // MOV Rd,Dd
+            case 0x122:
+                unsupported(); // MOV Cd,Rd
+            case 0x123:
+                unsupported(); // MOV Dd,Rd
+            case 0x130:
+                wrmsr();
+                return;
+            case 0x131:
+                rdtsc();
+                return;
+            case 0x132:
+                rdmsr();
+                return;
+            case 0x133:
+                rdpmc();
+                return;
+            case 0x134:
+                unsupported(); // SYSENTER (illegal on AMD64, legal on EMT64?, unrecognized by
+                               // udis86)
+            case 0x135:
+                unsupported();    // SYSEXIT (illegal on AMD64, legal on EMT64)
+            case 0x140 ... 0x14f: // CMOVcc Gv,Ev
+                if (test_cc(code & 0xf))
+                    G<v>(E<v>());
+                return;
+            case 0x180 ... 0x18f: // Jcc Jz
+                if (test_cc(code & 0xf))
+                    rip() += imm;
+                return;
+            case 0x190 ... 0x19f: // SETcc Eb
+                E<b>(test_cc(code & 0xf));
+                return;
+            case 0x1a0:
+                unsupported(); // push<v>(i,fs()); return i; // PUSH FS
+            case 0x1a8:
+                unsupported(); // push<v>(i,gs()); return i; // PUSH GS
+            case 0x1a1:
+                unsupported(); // fs(pop<v>(i)); return i;  // POP FS
+            case 0x1a9:
+                unsupported(); // gs(pop<v>(i)); return i;  // POP GS
+            case 0x1ac:
+                E<v>(shrd<v>(E<v>(), G<v>(), imm));
+                return; // SHRD Ev,Gv,Ib
+            case 0x1ad:
+                E<v>(shrd<v>(E<v>(), G<v>(), cl()));
+                return; // SHRD Ev,Gv,CL
+            case 0x1b0:
+                cmpxchg<b>();
+                return; // CMPXCHG Eb,Gb
+            case 0x1b1:
+                cmpxchg<v>();
+                return; // CMPXCHG Ev,Gv
+            case 0x1b6:
+                G<v>(static_cast<uint64_t>(static_cast<uint8_t>(E<b>())));
+                return; // MOVZX Gv, Eb
+            case 0x1b7:
+                G<v>(static_cast<uint64_t>(static_cast<uint8_t>(E<w>())));
+                return; // MOVZX Gv, Ew
+            case 0x1b9:
+                illegal(); // UD1
+            case 0x1ff:
+                illegal(); // UD0
+            default:
+                break;
+            }
+            unsupported();
+        }
+
+        // Locked instructions.
+
+        template <typename T> inline void lock_inc(T *ptr);
+        template <> inline void lock_inc<>(int8_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; incb %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_inc<>(int16_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; incw %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_inc<>(int32_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; incl %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_inc<>(int64_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; incq %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <typename T> inline void lock_dec(T *ptr);
+        template <> inline void lock_dec<>(int8_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; decb %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_dec<>(int16_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; decw %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_dec<>(int32_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; decl %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <> inline void lock_dec<>(int64_t *ptr) {
+            int64_t flags;
+            __asm__ __volatile__("lock; decq %0\n\tpushfq\n\tpopq %1"
+                                 : "=m"(*ptr), "=qm"(flags)
+                                 : "m"(*ptr));
+            set_flags(flags::OSZAP, flags);
+        }
+
+        template <typename T> inline T lock_cmpxchg(T *p, T o, T n);
+        template <> inline int8_t lock_cmpxchg<>(int8_t *p, int8_t o, int8_t n) {
+            int8_t r;
+            __asm__ __volatile__("lock; cmpxchgb %2,%1"
+                                 : "=a"(r), "=m"(*p)
+                                 : "q"(n), "m"(*p), "0"(o));
+            zf(r == o);
+            return r;
+        }
+
+        template <> inline int16_t lock_cmpxchg<>(int16_t *p, int16_t o, int16_t n) {
+            int16_t r;
+            __asm__ __volatile__("lock; cmpxchgw %2,%1"
+                                 : "=a"(r), "=m"(*p)
+                                 : "q"(n), "m"(*p), "0"(o));
+            zf(r == o);
+            return r;
+        }
+
+        template <> inline int32_t lock_cmpxchg<>(int32_t *p, int32_t o, int32_t n) {
+            int32_t r;
+            __asm__ __volatile__("lock; cmpxchgl %2,%1"
+                                 : "=a"(r), "=m"(*p)
+                                 : "q"(n), "m"(*p), "0"(o));
+            zf(r == o);
+            return r;
+        }
+
+        template <> inline int64_t lock_cmpxchg<>(int64_t *p, int64_t o, int64_t n) {
+            int64_t r;
+            __asm__ __volatile__("lock; cmpxchgq %2,%1"
+                                 : "=a"(r), "=m"(*p)
+                                 : "q"(n), "m"(*p), "0"(o));
+            zf(r == o);
+            return r;
+        }
+
+        template <typename os> void interpret_locked_opcode() {
+            typedef int8_t b;
+            typedef int16_t w;
+            typedef typename os::v v;
+            typedef typename os::z z;
+
+            if (mod == 3)
+                illegal();
+
+            int64_t addr = mem();
+            v *vp = reinterpret_cast<v *>(addr); // aliases
+            b *bp = reinterpret_cast<b *>(addr);
+            w *wp = reinterpret_cast<w *>(addr);
+            z *zp = reinterpret_cast<z *>(addr);
+
+            switch (code) {
+            case 0x1b0: // LOCK CMPXCHG Mb,Gb
+                set_reg<b>(0, lock_cmpxchg<b>(bp, get_reg<b>(0), G<b>()));
+                return;
+            case 0x1b1: // LOCK CMPXCHG Mv,Gv
+                set_reg<v>(0, lock_cmpxchg<v>(vp, get_reg<v>(0), G<v>()));
+                return;
+            case 0xfe:
+                switch (reg) {
+                case 0:
+                    lock_inc<b>(bp);
+                    return; // LOCK INC Mb
+                case 1:
+                    lock_dec<b>(bp);
+                    return; // LOCK DEC Mb
+                default:
+                    illegal();
+                }
+            case 0xff:
+                switch (reg) {
+                case 0:
+                    lock_inc<v>(vp);
+                    return; // LOCK INC Mv
+                case 1:
+                    lock_dec<v>(vp);
+                    return; // LOCK DEC Mv
+                default:
+                    illegal();
+                }
+            default:
+                unsupported();
+            }
+        }
+    };
+
+    static_assert(std::is_standard_layout<interpreter>::value,
+                  "assembly requires standard-layout state");
+    static_assert(offsetof(interpreter, m_reg) == 0x10, "assembly offset: m_reg");
+    static_assert(offsetof(interpreter, m_rip) == 0x90, "assembly offset: m_rip");
+    static_assert(offsetof(interpreter, m_rflags) == 0x98, "assembly offset: m_rflags");
+    static_assert(offsetof(interpreter, m_fx_fcw) == 0xa0, "assembly offset: m_fx_fcw");
+    static_assert(offsetof(interpreter, m_stack) == 0x2a0, "assembly offset: m_stack");
+    static_assert(offsetof(interpreter, m_stack_size) == 0x2a8, "assembly offset: m_stack_size");
+
+} // namespace jitpp
+
+namespace {
+    void *call_tracer_run(void *t) {
+        static_cast<jitpp::interpreter *>(t)->run();
+        return 0; // this could return the function pointer to execute on subsequent runs
+    }
+} // namespace
+
+namespace jitpp {
+
+    // executed far down the stack of the to-be-interpreted thread
+    void interpreter::stub() {
+        pthread_t thread;
+        pthread_attr_t attr;
+        size_t stack_size;
+
+        pthread_attr_init(&attr);
+        // The default accommodates modern libraries' thread-local storage.
+        pthread_attr_getstacksize(&attr, &stack_size);
+    retry:
+        int result = pthread_create(&thread, &attr, &call_tracer_run, this);
+        switch (result) {
+        case EAGAIN:
+            goto retry; // transient fault
+        case EINVAL:
+            LOG(DFATAL) << "stack size attribute invalid (stack_size = " << stack_size << ")";
+            break; // don't jit
+        case EPERM:
+            LOG(DFATAL) << "unable to create pthread (EPERM)";
+            break; // don't jit
+        default:
+            LOG(DFATAL) << "unexpected error (" << result << ")";
+            break;
+            // fall through
+        case 0:
+            pthread_join(thread, 0);
+            break;
+        }
+        pthread_attr_destroy(&attr);
+    }
+
+} // namespace jitpp
+
+// The definitions above retain global ownership and the symbols used by tracer_start.S.
+export module jitpp:interpreter;
+
+export namespace jitpp {
+    using ::jitpp::interpreter;
+}
