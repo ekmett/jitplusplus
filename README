@@ -9,4 +9,52 @@ udis86				-- use for debugging assembly
 google logging framework (glog) -- used to show output
 google flags (gflags)           -- used to pass options to the tracer
 libtool				-- used by the build process
-boost unit test framework 1.36	-- used by the test suite
+    boost unit test framework 1.36	-- used by the test suite
+
+Resurrection baseline (Linux x86-64)
+===================================
+
+The original interpreter and assembly entry/exit trampoline build with modern
+GCC. This is an experimental interpreter foundation, not a completed optimizing
+JIT. Unsupported instructions return to native execution at the original PC;
+modern libc commonly triggers this path on AVX instructions.
+
+On Debian/Ubuntu, install the build prerequisites:
+
+    sudo apt-get install build-essential autoconf automake libtool git python3 \
+        libgoogle-glog-dev libgflags-dev
+
+udis86 is used for diagnostic disassembly. If it is not already installed, the
+helper builds a pinned upstream revision locally, fixing its Python 3 integer
+division compatibility:
+
+    sh bin/build-udis86.sh "$PWD/build-deps"
+    export CPPFLAGS="-I$PWD/build-deps/include"
+    export LDFLAGS="-L$PWD/build-deps/lib -Wl,-rpath,$PWD/build-deps/lib"
+
+Bootstrap, build, and run the tests:
+
+    sh bin/autogen.sh
+
+Or run the stages individually:
+
+    autoreconf -fi
+    ./configure
+    make -j2
+    make check
+
+The active tests do not require Boost. test_interpreter runs the original demo;
+test_roundtrip uses a deterministic assembly sequence to check interpreted
+arithmetic, stores, arithmetic flags on native resumption, repeated entry,
+step-limited exit, and unsupported-instruction fallback. The assertions remain
+active in optimized builds. For instruction logging:
+
+    ./test_interpreter --logtostderr --v=1
+
+The original design still uses a worker pthread and a fixed gap on the caller's
+stack. Instruction coverage, syscall/TLS behavior, and extended vector state are
+incomplete; the round-trip tests establish a baseline, not general x86-64
+correctness. The old Boost tests remain disabled.
+
+Existing Autotools deprecation warnings and return-type warnings in the legacy
+flags helpers remain; those paths need further correctness work.

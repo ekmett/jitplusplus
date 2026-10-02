@@ -30,7 +30,9 @@ namespace jitpp {
     public:
 	class scoped_lock { 
 	public:
-	    friend void std::swap<scoped_lock>(scoped_lock &, scoped_lock &);
+	    friend void swap(scoped_lock & a, scoped_lock & b) {
+		std::swap(a.m_lock, b.m_lock);
+	    }
 	    scoped_lock();
 	    scoped_lock(scoped_lock & peer, move);
 	    scoped_lock(pthread_rwlock_t & lock, bool write = true);
@@ -46,15 +48,6 @@ namespace jitpp {
 	    void operator=(const scoped_lock &);
 	};
     };
-}
-
-namespace std { 
-    template<> inline void swap(
-	jitpp::native_rw_mutex::scoped_lock & a, 
-	jitpp::native_rw_mutex::scoped_lock & b
-    ) { 
-	swap(a.m_lock,b.m_lock);
-    }
 }
 
 #endif

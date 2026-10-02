@@ -62,9 +62,8 @@ _ZN5jitpp6tracer5startEv:
     mov %r15, %rdi
     /* fall through */
 
-    .globl _ZN5jitpp6tracer4stopEv
-    .type  _ZN5jitpp6tracer4stopEv, @function
-_ZN5jitpp6tracer4stopEv:    
+    /* Internal fallthrough, not the C++ tracer::stop() flag setter. */
+.Lrestore_native:
     fxrstor FXREGS_OFFSET(%rdi)
 
     movq %ss, %rax

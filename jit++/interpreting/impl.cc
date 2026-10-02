@@ -51,6 +51,8 @@ void interpreter_impl::run() {
 	    return;	     // stop interpreting and return
 	}
     }
+    // The assembly exit restores m_rflags directly, including on an explicit stop.
+    rflags();
     if (!m_stopped) { 
         VLOG(1) << "Completed " << FLAGS_jitpp_steps << " steps.";
         print_regs();

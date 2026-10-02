@@ -1,8 +1,6 @@
-#!/bin/bash
-aclocal -I m4
-autoheader
-autoconf
-automake
-./configure
+#!/bin/sh
+set -eu
+autoreconf -fi
+./configure "$@"
 make
-test/tests
+make check

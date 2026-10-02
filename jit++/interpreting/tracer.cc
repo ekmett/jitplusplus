@@ -29,10 +29,11 @@ namespace jitpp {
     void tracer::stub() { 
 	pthread_t thread;
 	pthread_attr_t attr;
-	size_t stack_size = std::max(8192,PTHREAD_STACK_MIN);
+	size_t stack_size;
 
 	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr,stack_size);
+	// The default accommodates modern libraries' thread-local storage.
+	pthread_attr_getstacksize(&attr,&stack_size);
     retry:
 	int result = pthread_create(&thread, &attr, &call_tracer_run, this);
 	switch (result) { 

@@ -67,6 +67,10 @@ libjit___la_SOURCES = \
 # test suite
 # noinst_PROGRAMS = test_suite test_interpreter
 noinst_PROGRAMS = test_interpreter
+check_PROGRAMS = test_roundtrip
+TESTS = test_roundtrip test_interpreter
+test_roundtrip_SOURCES = test/t_roundtrip.cc test/roundtrip.S
+test_roundtrip_LDADD = libjit++.la $(PTHREAD_LIBS)
 
 # test_suite_DEPENDENCIES = libjit++.la
 # test_suite_SOURCES = test/options.cc 
@@ -86,7 +90,7 @@ super-clean: maintainer-clean-local
 	rm -rf ./configure config.log config/config.h config.status Makefile Makefile.in ChangeLog
 
 # darcs support
-EXTRA_DIST = bin/autogen.sh
+EXTRA_DIST = bin/autogen.sh bin/build-udis86.sh
 
 ChangeLog: _darcs
 	echo "Automatically generated from 'darcs changes' by 'make ChangeLog'" > ChangeLog
