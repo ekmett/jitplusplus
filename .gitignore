@@ -31,6 +31,7 @@
 /test_roundtrip.log
 /test_roundtrip.trs
 /build*/
+/docs/superpowers/plans/
 *.o
 *.lo
 *.la
