@@ -34,7 +34,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 Use `-DCMAKE_BUILD_TYPE=Debug` for an unoptimized build. Both configurations run
-in CI. CMake generates `jit++/config.h` inside the build directory. Use
+in CI. Use
 `CMAKE_PREFIX_PATH` to locate dependencies in other prefixes; it is unnecessary
 when all dependencies are already in the toolchain's search paths.
 

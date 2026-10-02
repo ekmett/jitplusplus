@@ -1,6 +1,8 @@
 module;
-#include <jit++/config.h>
 #include <array>
+#include <bit>
+#include <iterator>
+#include <numeric>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -29,37 +31,37 @@ namespace jitpp {
 
     class interpreter_exception : public std::exception {
       public:
-        virtual bool fatal() const throw() = 0;
-        virtual const char *what() const throw() = 0;
+        virtual bool fatal() const noexcept = 0;
+        const char *what() const noexcept override = 0;
     };
 
     // we haven't yet added support for this opcode.
     class unsupported_opcode_exception : public interpreter_exception {
       public:
-        bool fatal() const throw() { return false; }
-        const char *what() const throw() { return "unsupported opcode"; }
+        bool fatal() const noexcept override { return false; }
+        const char *what() const noexcept override { return "unsupported opcode"; }
     };
 
     // we are parsing an invalid opcode. this is probably a bug, but it can be handled by the main
     // program
     class invalid_opcode_exception : public interpreter_exception {
       public:
-        bool fatal() const throw() { return false; }
-        const char *what() const throw() { return "invalid opcode"; }
+        bool fatal() const noexcept override { return false; }
+        const char *what() const noexcept override { return "invalid opcode"; }
     };
 
     // we are parsing a valid opcode that we will probably never support
     class uninterpretable_opcode_exception : public interpreter_exception {
       public:
-        bool fatal() const throw() { return false; }
-        const char *what() const throw() { return "uninterpretable opcode"; }
+        bool fatal() const noexcept override { return false; }
+        const char *what() const noexcept override { return "uninterpretable opcode"; }
     };
 
     // something we never expected to see has happened
     class interpreter_logic_error : public interpreter_exception {
       public:
-        virtual bool fatal() const throw() { return true; }
-        virtual const char *what() const throw() { return "interpreter logic error"; }
+        bool fatal() const noexcept override { return true; }
+        const char *what() const noexcept override { return "interpreter logic error"; }
     };
 } // namespace jitpp
 
@@ -67,19 +69,19 @@ namespace jitpp {
     namespace interpreting {
         namespace flags {
 
-            static const int32_t CF = 0x0001;
-            static const int32_t PF = 0x0004;
-            static const int32_t AF = 0x0010;
-            static const int32_t ZF = 0x0040;
-            static const int32_t SF = 0x0080;
-            static const int32_t TF = 0x0100;
-            static const int64_t IF = 0x0200;
-            static const int32_t DF = 0x0400;
-            static const int32_t OF = 0x0800;
+            static constexpr int32_t CF = 0x0001;
+            static constexpr int32_t PF = 0x0004;
+            static constexpr int32_t AF = 0x0010;
+            static constexpr int32_t ZF = 0x0040;
+            static constexpr int32_t SF = 0x0080;
+            static constexpr int32_t TF = 0x0100;
+            static constexpr int64_t IF = 0x0200;
+            static constexpr int32_t DF = 0x0400;
+            static constexpr int32_t OF = 0x0800;
 
-            static const int32_t OSZAPC = OF | SF | ZF | AF | PF | CF;
-            static const int32_t OSZAP = OF | SF | ZF | AF | PF;
-            static const int64_t OSZPC = OF | SF | ZF | PF | CF;
+            static constexpr int32_t OSZAPC = OF | SF | ZF | AF | PF | CF;
+            static constexpr int32_t OSZAP = OF | SF | ZF | AF | PF;
+            static constexpr int64_t OSZPC = OF | SF | ZF | PF | CF;
 
             // plain old data
             struct context {
@@ -94,27 +96,18 @@ namespace jitpp {
                 const int32_t m_handled_flags;
                 const int32_t m_cleared_flags;
 
-                inline bool cf(const context &ctx) const { return m_cf(ctx); }
-                inline bool af(const context &ctx) const { return m_af(ctx); }
-                inline bool of(const context &ctx) const { return m_of(ctx); }
-                inline int32_t handled_flags() const { return m_handled_flags; }
-                inline int32_t cleared_flags() const { return m_cleared_flags; }
+                bool cf(const context &ctx) const { return m_cf(ctx); }
+                bool af(const context &ctx) const { return m_af(ctx); }
+                bool of(const context &ctx) const { return m_of(ctx); }
+                int32_t handled_flags() const { return m_handled_flags; }
+                int32_t cleared_flags() const { return m_cleared_flags; }
             };
 
-            const uint8_t parity_lut[256] = {
-                1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0,
-                0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-                0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1,
-                1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-                0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1,
-                1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0,
-                1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-                0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-                0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0,
-                0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1};
-            inline bool calculate_parity(uint8_t b) { return parity_lut[b] != 0; }
+            constexpr bool calculate_parity(uint8_t b) noexcept {
+                return std::popcount(b) % 2 == 0;
+            }
 
-            template <typename T> inline bool test_cc(T &i, uint8_t cc) {
+            template <typename T> bool test_cc(T &i, uint8_t cc) {
                 switch (cc) {
                 case 0x0:
                     return i.of();
@@ -170,14 +163,18 @@ namespace jitpp {
         }
         static bool add_cf(const context &ctx) {
             // VLOG(1) << "add_cf " << (ctx.result < ctx.op1 ? "true" : "false");
-            return (uint64_t)ctx.result < (uint64_t)ctx.op1;
+            return static_cast<uint64_t>(ctx.result) < static_cast<uint64_t>(ctx.op1);
         }
         static bool add_of(const context &ctx) {
             return (((~((ctx.op1) ^ (ctx.op2)) & ((ctx.op2) ^ (ctx.result))) &
                      0x8000000000000000ULL) != 0);
         }
-        static bool adc_cf(const context &ctx) { return (uint64_t)ctx.result <= (uint64_t)ctx.op1; }
-        static bool sub_cf(const context &ctx) { return (uint64_t)ctx.op1 < (uint64_t)ctx.op2; }
+        static bool adc_cf(const context &ctx) {
+            return static_cast<uint64_t>(ctx.result) <= static_cast<uint64_t>(ctx.op1);
+        }
+        static bool sub_cf(const context &ctx) {
+            return static_cast<uint64_t>(ctx.op1) < static_cast<uint64_t>(ctx.op2);
+        }
 
     } // namespace interpreting
 } // namespace jitpp
@@ -185,32 +182,32 @@ namespace jitpp {
 namespace jitpp {
     namespace interpreting {
         struct os64 {
-            typedef int64_t v;
-            typedef int32_t z;
-            typedef uint32_t uz;
-            typedef int64_t qv;
-            typedef int32_t smaller_size;
-            static const int bits = 64;
+            using v = int64_t;
+            using z = int32_t;
+            using uz = uint32_t;
+            using qv = int64_t;
+            using smaller_size = int32_t;
+            static constexpr int bits = 64;
             static const char *reg_name(int r);
         };
 
         struct os32 {
-            typedef int32_t v;
-            typedef int32_t z;
-            typedef uint32_t uz;
-            typedef int64_t qv;
-            typedef int16_t smaller_size;
-            static const int bits = 32;
+            using v = int32_t;
+            using z = int32_t;
+            using uz = uint32_t;
+            using qv = int64_t;
+            using smaller_size = int16_t;
+            static constexpr int bits = 32;
             static const char *reg_name(int r);
         };
 
         struct os16 {
-            typedef int16_t v;
-            typedef int16_t z;
-            typedef uint16_t uz;
-            typedef int16_t qv;
-            typedef int8_t smaller_size;
-            static const int bits = 16;
+            using v = int16_t;
+            using z = int16_t;
+            using uz = uint16_t;
+            using qv = int16_t;
+            using smaller_size = int8_t;
+            static constexpr int bits = 16;
             static const char *reg_name(int r);
         };
 
@@ -219,105 +216,80 @@ namespace jitpp {
 
         template <typename T> struct os;
         template <> struct os<int16_t> {
-            typedef os16 value;
+            using value = os16;
         };
         template <> struct os<int32_t> {
-            typedef os32 value;
+            using value = os32;
         };
         template <> struct os<int64_t> {
-            typedef os64 value;
+            using value = os64;
         };
 
         template <typename T> struct group_1_traits {
-            static inline bool sbb_cf(const flags::context &ctx) {
-                return ((uint64_t)ctx.op1 < (uint64_t)ctx.result ||
+            static bool sbb_cf(const flags::context &ctx) {
+                return (static_cast<uint64_t>(ctx.op1) < static_cast<uint64_t>(ctx.result) ||
                         (static_cast<T>(ctx.op2) == static_cast<T>(0xffffffffffffffffULL)));
             }
-            static const flags::handler sbb_flags;
+            static constexpr flags::handler sbb_flags = {sbb_cf, sbb_af, sbb_of, flags::OSZAPC, 0};
         };
-        template <typename T>
-        const flags::handler group_1_traits<T>::sbb_flags = {sbb_cf, sbb_af, sbb_of, flags::OSZAPC,
-                                                             0};
 
         using namespace jitpp::interpreting::flags;
 
         template <typename T> struct group_2_traits {
-            static const int size = sizeof(T) * 8;
-            static const int mask = size == 64 ? 0x3f : 0x1f;
-            static inline bool sal_cf(const context &ctx) {
+            static constexpr int size = sizeof(T) * 8;
+            static constexpr int mask = size == 64 ? 0x3f : 0x1f;
+            static bool sal_cf(const context &ctx) {
                 return ((ctx.op1 >> (size - ctx.op2)) & 1) != 0;
             }
-            static inline bool sal_of(const context &ctx) { return (ctx.op1 ^ ctx.result) < 0; }
-            static inline bool sar_cf(const context &ctx) {
-                return ((ctx.op1 >> (ctx.op2 - 1)) & 1) != 0;
-            }
-            static inline bool ror_cf(const context &ctx) { return (ctx.result < 0); }
-            static inline bool shr_of(const context &ctx) {
-                return ((ctx.result << 1) ^ ctx.result) < 0;
-            }
-            static const flags::handler sal_flags, rol_flags, shr_flags, ror_flags, sar_flags,
-                shrd_flags;
+            static bool sal_of(const context &ctx) { return (ctx.op1 ^ ctx.result) < 0; }
+            static bool sar_cf(const context &ctx) { return ((ctx.op1 >> (ctx.op2 - 1)) & 1) != 0; }
+            static bool ror_cf(const context &ctx) { return (ctx.result < 0); }
+            static bool shr_of(const context &ctx) { return ((ctx.result << 1) ^ ctx.result) < 0; }
+            static constexpr flags::handler sal_flags = {sal_cf, flags::bad_flag, sal_of, OSZPC,
+                                                         AF};
+            static constexpr flags::handler rol_flags = {sal_cf, flags::bad_flag, sal_of, OF | CF,
+                                                         0};
+            static constexpr flags::handler sar_flags = {sar_cf, flags::bad_flag, flags::bad_flag,
+                                                         CF, OF};
+            static constexpr flags::handler shr_flags = {sar_cf, flags::bad_flag, shr_of, OSZPC,
+                                                         AF};
+            static constexpr flags::handler ror_flags = {ror_cf, flags::bad_flag, shr_of, OF | CF,
+                                                         0};
+            static constexpr flags::handler shrd_flags = {sar_cf, flags::bad_flag, shr_of, OSZPC,
+                                                          AF};
         };
-
-        template <typename T>
-        const flags::handler group_2_traits<T>::sal_flags = {sal_cf, flags::bad_flag, sal_of, OSZPC,
-                                                             AF};
-        template <typename T>
-        const flags::handler group_2_traits<T>::rol_flags = {sal_cf, flags::bad_flag, sal_of,
-                                                             OF | CF, 0};
-        template <typename T>
-        const flags::handler group_2_traits<T>::sar_flags = {sar_cf, flags::bad_flag,
-                                                             flags::bad_flag, CF, OF};
-        template <typename T>
-        const flags::handler group_2_traits<T>::shr_flags = {sar_cf, flags::bad_flag, shr_of, OSZPC,
-                                                             AF};
-        template <typename T>
-        const flags::handler group_2_traits<T>::ror_flags = {ror_cf, flags::bad_flag, shr_of,
-                                                             OF | CF, 0};
-        template <typename T>
-        const flags::handler group_2_traits<T>::shrd_flags = {sar_cf, flags::bad_flag, shr_of,
-                                                              OSZPC, AF};
 
         using namespace jitpp::interpreting::flags;
 
         template <typename T> struct group_3_traits {
-            static inline bool neg_cf(const context &ctx) { return ctx.result != 0; }
-            static inline bool neg_af(const context &ctx) { return (ctx.result & 0xf) != 0; }
-            static inline bool neg_of(const context &ctx) {
+            static bool neg_cf(const context &ctx) { return ctx.result != 0; }
+            static bool neg_af(const context &ctx) { return (ctx.result & 0xf) != 0; }
+            static bool neg_of(const context &ctx) {
                 return ctx.result == 1ULL << (sizeof(T) * 8 - 1);
             }
-            static const flags::handler neg_flags;
+            static constexpr flags::handler neg_flags = {neg_cf, neg_af, neg_of, flags::OSZAPC, 0};
         };
-        template <typename T>
-        const flags::handler group_3_traits<T>::neg_flags = {neg_cf, neg_af, neg_of, flags::OSZAPC,
-                                                             0};
 
         using namespace jitpp::interpreting::flags;
 
         template <typename T> struct group_4_traits {
-            static const int size = sizeof(T) * 8;
-            static const int shift_mask = (size == 64) ? 0x3f : 0x1f;
-            static inline bool dec_of(const context &ctx) {
+            static constexpr int size = sizeof(T) * 8;
+            static constexpr int shift_mask = (size == 64) ? 0x3f : 0x1f;
+            static bool dec_of(const context &ctx) {
                 return ctx.result == (1ULL << (size - 1)) - 1;
             }
-            static inline bool inc_of(const context &ctx) {
-                return ctx.result == 1ULL << (size - 1);
-            }
-            static inline bool inc_af(const context &ctx) { return (ctx.result & 0xf) == 0; }
-            static inline bool dec_af(const context &ctx) { return (ctx.result & 0xf) == 0xf; }
-            static const handler inc_flags, dec_flags;
+            static bool inc_of(const context &ctx) { return ctx.result == 1ULL << (size - 1); }
+            static bool inc_af(const context &ctx) { return (ctx.result & 0xf) == 0; }
+            static bool dec_af(const context &ctx) { return (ctx.result & 0xf) == 0xf; }
+            static constexpr handler inc_flags = {bad_flag, inc_af, inc_of, OSZAP, 0};
+            static constexpr handler dec_flags = {bad_flag, dec_af, dec_of, OSZAP, 0};
         };
 
-        template <typename T>
-        const handler group_4_traits<T>::inc_flags = {bad_flag, inc_af, inc_of, OSZAP, 0};
-        template <typename T>
-        const handler group_4_traits<T>::dec_flags = {bad_flag, dec_af, dec_of, OSZAP, 0};
-
         extern const char *byte_reg_name(int r, bool has_rex);
-        extern __attribute__((noreturn)) void illegal();
-        extern __attribute__((noreturn)) void unsupported();
-        extern __attribute__((noreturn)) void uninterpretable();
-        extern __attribute__((noreturn)) void logic_error();
+        [[noreturn]] void illegal();
+        [[noreturn]] void unsupported();
+        [[noreturn]] void uninterpretable();
+        [[noreturn]] void logic_error();
 
     } // namespace interpreting
 } // namespace jitpp
@@ -356,23 +328,6 @@ namespace jitpp {
 } // namespace jitpp
 
 namespace jitpp {
-    JITPP_ALWAYS_INLINE bool likely(bool x) {
-#ifdef __GNUC__
-        return static_cast<bool>(__builtin_expect(static_cast<long>(x), 1L));
-#else
-        return x;
-#endif
-    }
-    JITPP_ALWAYS_INLINE bool unlikely(bool x) {
-#ifdef __GNUC__
-        return static_cast<bool>(__builtin_expect(static_cast<long>(x), 0L));
-#else
-        return x;
-#endif
-    }
-} // namespace jitpp
-
-namespace jitpp {
     using namespace interpreting;
     using namespace interpreting::flags;
 
@@ -384,16 +339,16 @@ namespace jitpp {
         int32_t d[2];
         int16_t w[4];
         int8_t b[8], reserved[8];
-    } __attribute__((aligned(8)));
+    };
 
-    union xmm_t {
+    union alignas(16) xmm_t {
         double df[2];
         float f[4];
         int64_t q[2];
         int32_t d[4];
         int16_t w[8];
         int8_t b[16];
-    } __attribute__((aligned(16)));
+    };
 
     static const char *reg_spaces = "                   ";
     static const char *mem_spaces = "                  ";
@@ -499,18 +454,16 @@ namespace jitpp {
         bool m_stopped;
 
         interpreter(size_t stack_size = default_stack_size())
-            : m_stack_size(stack_size), m_handler(0), m_lazy_flags(0) {
-            for (int i = 0; i < 16; ++i) {
-                m_reg[i] = 0xbad0 + i;
-            }
+            : m_stack_size(stack_size), m_handler(nullptr), m_lazy_flags(0) {
+            std::iota(std::begin(m_reg), std::end(m_reg), int64_t{0xbad0});
         }
 
-        ~interpreter() {}
+        ~interpreter() = default;
 
         static size_t default_stack_size() { return FLAGS_jitpp_default_stack_size; }
 
         /* single threaded, non re-entrant! */
-        JITPP_NOTHROW void start();
+        void start() noexcept;
         void stop() { m_stopped = true; }
 
         // hide copy and assignment
@@ -525,34 +478,34 @@ namespace jitpp {
         // m_rflags is mutable for lazy flag materialization.
         int64_t &base_rflags() const { return m_rflags; }
 
-        inline bool is_lazy(int32_t mask) const { return (m_lazy_flags & mask) != 0; }
-        inline bool has_flag(int32_t mask) const { return (base_rflags() & mask) != 0; }
+        bool is_lazy(int32_t mask) const { return (m_lazy_flags & mask) != 0; }
+        bool has_flag(int32_t mask) const { return (base_rflags() & mask) != 0; }
 
         mutable int64_t m_lazy_flags;
 
-        inline int64_t lazy_flags() const { return m_lazy_flags; }
-        inline bool cf() const {
+        int64_t lazy_flags() const { return m_lazy_flags; }
+        bool cf() const {
             return is_lazy(CF) ? force_lazy(CF, m_handler->cf(m_context)) : has_flag(CF);
         }
-        inline bool pf() const {
+        bool pf() const {
             return is_lazy(PF) ? force_lazy(PF, calculate_parity(m_context.result)) : has_flag(PF);
         }
-        inline bool af() const {
+        bool af() const {
             return is_lazy(AF) ? force_lazy(AF, m_handler->af(m_context)) : has_flag(AF);
         }
-        inline bool zf() const {
+        bool zf() const {
             return is_lazy(ZF) ? force_lazy(ZF, m_context.result == 0) : has_flag(ZF);
         }
-        inline bool sf() const {
+        bool sf() const {
             return is_lazy(SF) ? force_lazy(SF, m_context.result < 0) : has_flag(ZF);
         }
-        inline bool of() const {
+        bool of() const {
             return is_lazy(OF) ? force_lazy(OF, m_handler->of(m_context)) : has_flag(OF);
         }
-        inline bool tf() const { return has_flag(TF); }
-        inline bool df() const { return has_flag(DF); }
+        bool tf() const { return has_flag(TF); }
+        bool df() const { return has_flag(DF); }
 
-        inline bool set_flag(int32_t mask, bool value = true) {
+        bool set_flag(int32_t mask, bool value = true) {
             m_lazy_flags &= ~mask;
             if (value)
                 base_rflags() |= mask;
@@ -561,25 +514,25 @@ namespace jitpp {
             return value;
         }
 
-        inline bool set_flags(int32_t mask, int32_t value) {
+        bool set_flags(int32_t mask, int32_t value) {
             m_lazy_flags &= ~mask;
             base_rflags() = (base_rflags() & ~mask) | (value & mask);
         }
 
-        inline bool cf(bool value) { return set_flag(CF, value); }
-        inline bool pf(bool value) { return set_flag(PF, value); }
-        inline bool af(bool value) { return set_flag(AF, value); }
-        inline bool zf(bool value) { return set_flag(ZF, value); }
-        inline bool sf(bool value) { return set_flag(SF, value); }
-        inline bool of(bool value) { return set_flag(OF, value); }
-        inline bool tf(bool value) {
+        bool cf(bool value) { return set_flag(CF, value); }
+        bool pf(bool value) { return set_flag(PF, value); }
+        bool af(bool value) { return set_flag(AF, value); }
+        bool zf(bool value) { return set_flag(ZF, value); }
+        bool sf(bool value) { return set_flag(SF, value); }
+        bool of(bool value) { return set_flag(OF, value); }
+        bool tf(bool value) {
             if (value)
                 base_rflags() |= TF;
             else
                 base_rflags() &= ~TF;
             return value;
         }
-        inline bool df(bool value) {
+        bool df(bool value) {
             if (value)
                 base_rflags() |= DF;
             else
@@ -587,7 +540,7 @@ namespace jitpp {
             return value;
         }
 
-        inline bool force_lazy(int64_t mask, bool value = true) const {
+        bool force_lazy(int64_t mask, bool value = true) const {
             VLOG(1) << "lazy flag " << mask << " = " << (value ? "true" : "false");
             m_lazy_flags &= ~mask;
             if (value)
@@ -613,7 +566,7 @@ namespace jitpp {
             m_context.result = result;
             return result;
         }
-        inline int64_t &rflags() {
+        int64_t &rflags() {
             if (m_lazy_flags != 0) {
                 // force flags
                 cf();
@@ -626,11 +579,11 @@ namespace jitpp {
             return base_rflags();
         }
 
-        inline void rflags(int64_t value) {
+        void rflags(int64_t value) {
             m_lazy_flags = 0;
             base_rflags() = value;
         }
-        inline bool test_cc(uint8_t cc) {
+        bool test_cc(uint8_t cc) {
             bool result = jitpp::interpreting::flags::test_cc(*this, cc);
             VLOG(1) << "condition? " << (result ? "true" : "false");
             return result;
@@ -662,76 +615,76 @@ namespace jitpp {
         uint8_t seg_prefix;
         uint8_t log_v; // default operand size = 2^log_v bytes
 
-        inline bool has_seg_prefix() const { return seg_prefix != 0; }
-        inline bool has_os_prefix() const { return (prefix & prefix_66h_mask) != 0; }
-        inline bool has_as_prefix() const { return (prefix & prefix_67h_mask) != 0; }
-        inline bool has_lock_prefix() const { return (prefix & prefix_lock_mask) != 0; }
-        inline bool has_repne_prefix() const { return sse_prefix == 2; }
-        inline bool has_rep_prefix() const { return sse_prefix == 3; }
-        inline bool has_repxx_prefix() const { return (prefix & prefix_repxx_mask) != 0; }
-        inline bool has_rex() const { return (prefix & prefix_rex_mask) != 0; }
-        inline bool has_rex_w() const { return (prefix & prefix_rex_w_mask) != 0; }
-        inline bool has_rex_r() const { return (prefix & prefix_rex_r_mask) != 0; }
-        inline bool has_rex_x() const { return (prefix & prefix_rex_x_mask) != 0; }
-        inline bool has_rex_b() const { return (prefix & prefix_rex_b_mask) != 0; }
-        inline bool has_extra() const { return (parts & part_extra) != 0; }
-        inline bool has_modrm() const { return (parts & part_modrm) != 0; }
-        inline bool has_sib() const { return (parts & part_sib) != 0; }
-        inline bool has_disp() const { return (parts & part_disp) != 0; }
-        inline bool has_imm() const { return (parts & part_imm) != 0; }
-        inline bool has_imm2() const { return (parts & part_imm2) != 0; }
-        inline bool is_rip_relative() const { return !has_sib() && (mod == 0) && ((rm & 7) == 5); }
-        inline bool has_memory_operand() const { return mod != 3; } // assumes has_modrm
-        inline bool address_size_is_64() const { return (prefix & prefix_67h_mask) == 0; }
+        bool has_seg_prefix() const { return seg_prefix != 0; }
+        bool has_os_prefix() const { return (prefix & prefix_66h_mask) != 0; }
+        bool has_as_prefix() const { return (prefix & prefix_67h_mask) != 0; }
+        bool has_lock_prefix() const { return (prefix & prefix_lock_mask) != 0; }
+        bool has_repne_prefix() const { return sse_prefix == 2; }
+        bool has_rep_prefix() const { return sse_prefix == 3; }
+        bool has_repxx_prefix() const { return (prefix & prefix_repxx_mask) != 0; }
+        bool has_rex() const { return (prefix & prefix_rex_mask) != 0; }
+        bool has_rex_w() const { return (prefix & prefix_rex_w_mask) != 0; }
+        bool has_rex_r() const { return (prefix & prefix_rex_r_mask) != 0; }
+        bool has_rex_x() const { return (prefix & prefix_rex_x_mask) != 0; }
+        bool has_rex_b() const { return (prefix & prefix_rex_b_mask) != 0; }
+        bool has_extra() const { return (parts & part_extra) != 0; }
+        bool has_modrm() const { return (parts & part_modrm) != 0; }
+        bool has_sib() const { return (parts & part_sib) != 0; }
+        bool has_disp() const { return (parts & part_disp) != 0; }
+        bool has_imm() const { return (parts & part_imm) != 0; }
+        bool has_imm2() const { return (parts & part_imm2) != 0; }
+        bool is_rip_relative() const { return !has_sib() && (mod == 0) && ((rm & 7) == 5); }
+        bool has_memory_operand() const { return mod != 3; } // assumes has_modrm
+        bool address_size_is_64() const { return (prefix & prefix_67h_mask) == 0; }
 
-        inline uint8_t v() const { return 1 << log_v; }
-        inline uint8_t scale() const { return 1 << log_scale; }
+        uint8_t v() const { return 1 << log_v; }
+        uint8_t scale() const { return 1 << log_scale; }
 
         // augment with rex, input is a 3 bit wide value
-        inline uint8_t rex_w(uint8_t b) const { return (prefix & prefix_rex_w_mask) | b; }
-        inline uint8_t rex_r(uint8_t b) const { return ((prefix & prefix_rex_r_mask) << 1) | b; }
-        inline uint8_t rex_x(uint8_t b) const { return ((prefix & prefix_rex_x_mask) << 2) | b; }
-        inline uint8_t rex_b(uint8_t b) const { return ((prefix & prefix_rex_b_mask) << 3) | b; }
+        uint8_t rex_w(uint8_t b) const { return (prefix & prefix_rex_w_mask) | b; }
+        uint8_t rex_r(uint8_t b) const { return ((prefix & prefix_rex_r_mask) << 1) | b; }
+        uint8_t rex_x(uint8_t b) const { return ((prefix & prefix_rex_x_mask) << 2) | b; }
+        uint8_t rex_b(uint8_t b) const { return ((prefix & prefix_rex_b_mask) << 3) | b; }
 
         // flags and lookups
-        static const uint8_t prefix_legacy_mask = 0xf0;
-        static const uint8_t prefix_repxx_mask = 0x80;
-        static const uint8_t prefix_lock_mask = 0x40;
-        static const uint8_t prefix_67h_mask = 0x20;
-        static const uint8_t prefix_66h_mask = 0x10;
+        static constexpr uint8_t prefix_legacy_mask = 0xf0;
+        static constexpr uint8_t prefix_repxx_mask = 0x80;
+        static constexpr uint8_t prefix_lock_mask = 0x40;
+        static constexpr uint8_t prefix_67h_mask = 0x20;
+        static constexpr uint8_t prefix_66h_mask = 0x10;
 
-        static const uint8_t prefix_rex_mask = 0x0f;
-        static const uint8_t prefix_rex_w_mask = 0x08;
-        static const uint8_t prefix_rex_r_mask = 0x04;
-        static const uint8_t prefix_rex_x_mask = 0x02;
-        static const uint8_t prefix_rex_b_mask = 0x01;
+        static constexpr uint8_t prefix_rex_mask = 0x0f;
+        static constexpr uint8_t prefix_rex_w_mask = 0x08;
+        static constexpr uint8_t prefix_rex_r_mask = 0x04;
+        static constexpr uint8_t prefix_rex_x_mask = 0x02;
+        static constexpr uint8_t prefix_rex_b_mask = 0x01;
 
         // extra, modrm, sib, disp, imm, imm2
-        static const uint8_t part_modrm = 0x80; // == encoding_modrm_byte
-        static const uint8_t part_extra = 0x40; // == encoding_extra_byte
-        static const uint8_t part_sib = 0x10;   // scale index & base are valid
-        static const uint8_t part_disp = 0x08;
-        static const uint8_t part_imm = 0x04;
-        static const uint8_t part_imm2 = 0x02;
+        static constexpr uint8_t part_modrm = 0x80; // == encoding_modrm_byte
+        static constexpr uint8_t part_extra = 0x40; // == encoding_extra_byte
+        static constexpr uint8_t part_sib = 0x10;   // scale index & base are valid
+        static constexpr uint8_t part_disp = 0x08;
+        static constexpr uint8_t part_imm = 0x04;
+        static constexpr uint8_t part_imm2 = 0x02;
 
-        static const uint8_t encoding_has_modrm = 0x80;
-        static const uint8_t encoding_extra_byte = 0x40;    // [0f 38] or [0f 3a]
-        static const uint8_t encoding_default_os_64 = 0x10; // 50-5f, ff/6 8f/0
+        static constexpr uint8_t encoding_has_modrm = 0x80;
+        static constexpr uint8_t encoding_extra_byte = 0x40;    // [0f 38] or [0f 3a]
+        static constexpr uint8_t encoding_default_os_64 = 0x10; // 50-5f, ff/6 8f/0
 
-        static const uint8_t encoding_immediate_mask = 0x07;
-        static const uint8_t encoding_no_imm = 0x00;
-        static const uint8_t encoding_Ib = 0x01;
-        static const uint8_t encoding_Iz = 0x02;
-        static const uint8_t encoding_Iw = 0x03;
-        static const uint8_t encoding_IwIb = 0x04; // ENTER
-        static const uint8_t encoding_Iv = 0x05;   // z,w,q as appropriate to size
-        static const uint8_t encoding_hard = 0x06; // handle opcode by opcode hard code
+        static constexpr uint8_t encoding_immediate_mask = 0x07;
+        static constexpr uint8_t encoding_no_imm = 0x00;
+        static constexpr uint8_t encoding_Ib = 0x01;
+        static constexpr uint8_t encoding_Iz = 0x02;
+        static constexpr uint8_t encoding_Iw = 0x03;
+        static constexpr uint8_t encoding_IwIb = 0x04; // ENTER
+        static constexpr uint8_t encoding_Iv = 0x05;   // z,w,q as appropriate to size
+        static constexpr uint8_t encoding_hard = 0x06; // handle opcode by opcode hard code
 
         // Clang accepts GNU array/range designators in C++; keep overlap warnings enabled.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc99-designator"
         // clang-format off
-        static inline constexpr auto encoding_lut = [] consteval {
+        static constexpr auto encoding_lut = [] consteval {
             // Recipes describe bytes to consume, not whether execution is supported.
             enum : uint8_t {
                 MR = encoding_has_modrm,
@@ -828,7 +781,7 @@ namespace jitpp {
             parts = prefix = seg_prefix = sse_prefix = 0;
         refetch:
             code = fetch<uint8_t>(i);
-            VLOG(4) << "opcode = " << std::hex << (int)code;
+            VLOG(4) << "opcode = " << std::hex << static_cast<int>(code);
 
             switch (code) {
             case 0x0f: // 0f xx
@@ -888,9 +841,9 @@ namespace jitpp {
             parts |= encoding_flags & (encoding_has_modrm | encoding_extra_byte);
             if (has_modrm()) {
                 // read extra byte if needed
-                if (unlikely(has_extra())) {
+                if (has_extra()) [[unlikely]] {
                     extra = fetch<uint8_t>(i);
-                    VLOG(4) << "extra = " << std::hex << (int)extra;
+                    VLOG(4) << "extra = " << std::hex << static_cast<int>(extra);
                 }
                 // parse mod r/m
                 uint8_t modrm = fetch<uint8_t>(i);
@@ -898,19 +851,22 @@ namespace jitpp {
                 reg = rex_r((modrm >> 3) & 7);
                 uint8_t base_or_rm = rm = rex_b(modrm & 7);
 
-                VLOG(4) << "modrm = " << std::hex << (int)modrm << ", mod = " << (int)mod
-                        << ", reg.r = " << (int)reg << ", rm.b = " << (int)rm;
+                VLOG(4) << "modrm = " << std::hex << static_cast<int>(modrm)
+                        << ", mod = " << static_cast<int>(mod)
+                        << ", reg.r = " << static_cast<int>(reg)
+                        << ", rm.b = " << static_cast<int>(rm);
                 if ((mod != 3) && ((rm & 7) == 4)) {
                     // read sib
                     uint8_t sib = fetch<uint8_t>(i);
-                    VLOG(4) << "sib = " << std::hex << (int)sib;
+                    VLOG(4) << "sib = " << std::hex << static_cast<int>(sib);
                     parts |= part_sib;
                     // parse sib
                     log_scale = sib >> 6;
                     index = rex_x((sib >> 3) & 7);
                     base_or_rm = base = rex_b(sib & 7);
-                    VLOG(4) << std::hex << "log_scale = " << (int)log_scale
-                            << ", index.x = " << (int)index << ", base.b = " << (int)base;
+                    VLOG(4) << std::hex << "log_scale = " << static_cast<int>(log_scale)
+                            << ", index.x = " << static_cast<int>(index)
+                            << ", base.b = " << static_cast<int>(base);
                 }
                 // read displacement
                 switch (mod) {
@@ -934,7 +890,7 @@ namespace jitpp {
                     break;
                 }
                 if ((parts & part_disp) != 0)
-                    VLOG(4) << "disp = " << std::hex << (int)disp;
+                    VLOG(4) << "disp = " << std::hex << static_cast<int>(disp);
             }
 
             if (has_rex_w())
@@ -942,7 +898,7 @@ namespace jitpp {
             else if (has_os_prefix())
                 log_v = 1;
             else if ((encoding_flags & encoding_default_os_64) != 0) {
-                if (unlikely(code == 0xff))
+                if (code == 0xff) [[unlikely]]
                     switch (reg) {
                     case 2:
                     case 4:
@@ -952,7 +908,7 @@ namespace jitpp {
                     default:
                         log_v = 2;
                     }
-                else if (unlikely((code == 0x8f) && (reg != 0)))
+                else if ((code == 0x8f) && (reg != 0)) [[unlikely]]
                     log_v = 2; // any 8f /n (n != 0) than POP Ev
                 else
                     log_v = 3;
@@ -1027,7 +983,8 @@ namespace jitpp {
                         imm = 0;
                     break;
                 default:
-                    LOG(DFATAL) << "hard immediate without case. opcode: " << std::hex << (int)code;
+                    LOG(DFATAL) << "hard immediate without case. opcode: " << std::hex
+                                << static_cast<int>(code);
                     code = 0x10b; // bail by invoking known bad opcode UD1
                     imm = 0;
                     break;
@@ -1041,7 +998,7 @@ namespace jitpp {
                 break;
             }
             if ((parts & part_imm) != 0)
-                VLOG(4) << "imm = " << std::hex << (int)imm;
+                VLOG(4) << "imm = " << std::hex << static_cast<int>(imm);
             return i;
         }
 
@@ -1055,7 +1012,7 @@ namespace jitpp {
         mutable bool m_gs_base_known;
 
         int64_t fs_base() const {
-            if (unlikely(!m_fs_base_known)) {
+            if (!m_fs_base_known) [[unlikely]] {
                 syscall(SYS_arch_prctl, ARCH_GET_FS, &m_fs_base);
                 m_fs_base_known = true;
             }
@@ -1063,7 +1020,7 @@ namespace jitpp {
         }
 
         int64_t gs_base() const {
-            if (unlikely(!m_gs_base_known)) {
+            if (!m_gs_base_known) [[unlikely]] {
                 syscall(SYS_arch_prctl, ARCH_GET_FS, &m_gs_base);
                 m_gs_base_known = true;
             }
@@ -1126,9 +1083,9 @@ namespace jitpp {
             }
         }
 
-        inline int32_t eip() const { return static_cast<int32_t>(rip()); }
-        inline int64_t rip() const { return m_rip; }
-        inline int64_t &rip() { return m_rip; }
+        int32_t eip() const { return static_cast<int32_t>(rip()); }
+        int64_t rip() const { return m_rip; }
+        int64_t &rip() { return m_rip; }
 
         int64_t repetitions() const {
             if (has_repxx_prefix())
@@ -1184,141 +1141,147 @@ namespace jitpp {
             return addr;
         }
 
-        inline int8_t &ah() { return reinterpret_cast<int8_t *>(m_reg)[1]; }
+        int8_t &ah() { return reinterpret_cast<int8_t *>(m_reg)[1]; }
 
-        inline int8_t ah() const { return reinterpret_cast<const int8_t *>(m_reg)[1]; }
+        int8_t ah() const { return reinterpret_cast<const int8_t *>(m_reg)[1]; }
 
-        inline int64_t &rax() { return m_reg[0]; }
-        inline int64_t &rcx() { return m_reg[1]; }
-        inline int64_t &rdx() { return m_reg[2]; }
-        inline int64_t &rbx() { return m_reg[3]; }
-        inline int64_t &rsp() { return m_reg[4]; }
-        inline int64_t &rbp() { return m_reg[5]; }
-        inline int64_t &rsi() { return m_reg[6]; }
-        inline int64_t &rdi() { return m_reg[7]; }
-        inline int64_t &r8() { return m_reg[8]; }
-        inline int64_t &r9() { return m_reg[9]; }
-        inline int64_t &r10() { return m_reg[10]; }
-        inline int64_t &r11() { return m_reg[11]; }
-        inline int64_t &r12() { return m_reg[12]; }
-        inline int64_t &r13() { return m_reg[13]; }
-        inline int64_t &r14() { return m_reg[14]; }
-        inline int64_t &r15() { return m_reg[15]; }
+        int64_t &rax() { return m_reg[0]; }
+        int64_t &rcx() { return m_reg[1]; }
+        int64_t &rdx() { return m_reg[2]; }
+        int64_t &rbx() { return m_reg[3]; }
+        int64_t &rsp() { return m_reg[4]; }
+        int64_t &rbp() { return m_reg[5]; }
+        int64_t &rsi() { return m_reg[6]; }
+        int64_t &rdi() { return m_reg[7]; }
+        int64_t &r8() { return m_reg[8]; }
+        int64_t &r9() { return m_reg[9]; }
+        int64_t &r10() { return m_reg[10]; }
+        int64_t &r11() { return m_reg[11]; }
+        int64_t &r12() { return m_reg[12]; }
+        int64_t &r13() { return m_reg[13]; }
+        int64_t &r14() { return m_reg[14]; }
+        int64_t &r15() { return m_reg[15]; }
 
-        inline int64_t rax() const { return m_reg[0]; }
-        inline int64_t rcx() const { return m_reg[1]; }
-        inline int64_t rdx() const { return m_reg[2]; }
-        inline int64_t rbx() const { return m_reg[3]; }
-        inline int64_t rsp() const { return m_reg[4]; }
-        inline int64_t rbp() const { return m_reg[5]; }
-        inline int64_t rsi() const { return m_reg[6]; }
-        inline int64_t rdi() const { return m_reg[7]; }
-        inline int64_t r8() const { return m_reg[8]; }
-        inline int64_t r9() const { return m_reg[9]; }
-        inline int64_t r10() const { return m_reg[10]; }
-        inline int64_t r11() const { return m_reg[11]; }
-        inline int64_t r12() const { return m_reg[12]; }
-        inline int64_t r13() const { return m_reg[13]; }
-        inline int64_t r14() const { return m_reg[14]; }
-        inline int64_t r15() const { return m_reg[15]; }
+        int64_t rax() const { return m_reg[0]; }
+        int64_t rcx() const { return m_reg[1]; }
+        int64_t rdx() const { return m_reg[2]; }
+        int64_t rbx() const { return m_reg[3]; }
+        int64_t rsp() const { return m_reg[4]; }
+        int64_t rbp() const { return m_reg[5]; }
+        int64_t rsi() const { return m_reg[6]; }
+        int64_t rdi() const { return m_reg[7]; }
+        int64_t r8() const { return m_reg[8]; }
+        int64_t r9() const { return m_reg[9]; }
+        int64_t r10() const { return m_reg[10]; }
+        int64_t r11() const { return m_reg[11]; }
+        int64_t r12() const { return m_reg[12]; }
+        int64_t r13() const { return m_reg[13]; }
+        int64_t r14() const { return m_reg[14]; }
+        int64_t r15() const { return m_reg[15]; }
 
-        inline int32_t eax() const { return m_reg[0]; }
-        inline int32_t ecx() const { return m_reg[1]; }
-        inline int32_t edx() const { return m_reg[2]; }
-        inline int32_t ebx() const { return m_reg[3]; }
-        inline int32_t esp() const { return m_reg[4]; }
-        inline int32_t ebp() const { return m_reg[5]; }
-        inline int32_t esi() const { return m_reg[6]; }
-        inline int32_t edi() const { return m_reg[7]; }
+        int32_t eax() const { return m_reg[0]; }
+        int32_t ecx() const { return m_reg[1]; }
+        int32_t edx() const { return m_reg[2]; }
+        int32_t ebx() const { return m_reg[3]; }
+        int32_t esp() const { return m_reg[4]; }
+        int32_t ebp() const { return m_reg[5]; }
+        int32_t esi() const { return m_reg[6]; }
+        int32_t edi() const { return m_reg[7]; }
 
-        inline int16_t ax() const { return m_reg[0]; }
-        inline int16_t cx() const { return m_reg[1]; }
-        inline int16_t dx() const { return m_reg[2]; }
-        inline int16_t bx() const { return m_reg[3]; }
-        inline int16_t sp() const { return m_reg[4]; }
-        inline int16_t bp() const { return m_reg[5]; }
-        inline int16_t si() const { return m_reg[6]; }
-        inline int16_t di() const { return m_reg[7]; }
+        int16_t ax() const { return m_reg[0]; }
+        int16_t cx() const { return m_reg[1]; }
+        int16_t dx() const { return m_reg[2]; }
+        int16_t bx() const { return m_reg[3]; }
+        int16_t sp() const { return m_reg[4]; }
+        int16_t bp() const { return m_reg[5]; }
+        int16_t si() const { return m_reg[6]; }
+        int16_t di() const { return m_reg[7]; }
 
-        inline int8_t al() const { return m_reg[0]; }
-        inline int8_t cl() const { return m_reg[1]; }
-        inline int8_t dl() const { return m_reg[2]; }
-        inline int8_t bl() const { return m_reg[3]; }
+        int8_t al() const { return m_reg[0]; }
+        int8_t cl() const { return m_reg[1]; }
+        int8_t dl() const { return m_reg[2]; }
+        int8_t bl() const { return m_reg[3]; }
 
-        template <typename T> inline const char *reg_name(int r) const {
-            typedef typename os<T>::value os;
+        template <typename T> const char *reg_name(int r) const {
+            using os = typename os<T>::value;
             return os::reg_name(r);
         }
 
-        template <> inline const char *reg_name<int8_t>(int r) const {
+        template <> const char *reg_name<int8_t>(int r) const {
             return byte_reg_name(r, has_rex());
         }
 
-        template <typename T> inline T get_reg(int r) const;
-        template <> inline int64_t get_reg<>(int r) const { return m_reg[r]; }
+        template <typename T> T get_reg(int r) const;
+        template <> int64_t get_reg<>(int r) const { return m_reg[r]; }
 
-        template <> inline int32_t get_reg<>(int r) const { return m_reg[r]; }
+        template <> int32_t get_reg<>(int r) const { return m_reg[r]; }
 
-        template <> inline int16_t get_reg<>(int r) const { return m_reg[r]; }
+        template <> int16_t get_reg<>(int r) const { return m_reg[r]; }
 
-        template <> inline int8_t get_reg<>(int r) const {
+        template <> int8_t get_reg<>(int r) const {
             int8_t result = has_rex() ? *reinterpret_cast<const int8_t *>(m_reg + r)
                                       : *(reinterpret_cast<const int8_t *>(m_reg + (r & 3)) +
                                           (((r & 4) != 0) ? 1 : 0));
-            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " -> " << std::hex << (int64_t)result;
+            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " -> " << std::hex
+                    << static_cast<int64_t>(result);
             return result;
         }
 
-        template <typename T> inline void set_reg(int r, T v);
-        template <> inline void set_reg<>(int r, int64_t v) {
-            VLOG(1) << reg_spaces << reg_name<int64_t>(r) << " := " << std::hex << (int64_t)v;
+        template <typename T> void set_reg(int r, T v);
+        template <> void set_reg<>(int r, int64_t v) {
+            VLOG(1) << reg_spaces << reg_name<int64_t>(r) << " := " << std::hex
+                    << static_cast<int64_t>(v);
             m_reg[r] = v;
         }
 
-        template <> inline void set_reg<>(int r, int32_t v) {
+        template <> void set_reg<>(int r, int32_t v) {
             // zero extended, not sign extended!
-            VLOG(1) << reg_spaces << reg_name<int32_t>(r) << " := " << std::hex << (int64_t)v;
-            m_reg[r] = (uint64_t)(uint32_t)v;
+            VLOG(1) << reg_spaces << reg_name<int32_t>(r) << " := " << std::hex
+                    << static_cast<int64_t>(v);
+            m_reg[r] = static_cast<uint64_t>(static_cast<uint32_t>(v));
         }
 
-        template <> inline void set_reg<>(int r, int16_t v) {
-            VLOG(1) << reg_spaces << reg_name<int16_t>(r) << " := " << std::hex << (int64_t)v;
+        template <> void set_reg<>(int r, int16_t v) {
+            VLOG(1) << reg_spaces << reg_name<int16_t>(r) << " := " << std::hex
+                    << static_cast<int64_t>(v);
             *reinterpret_cast<int16_t *>(m_reg + r) = v;
         }
 
-        template <> inline void set_reg<>(int r, int8_t v) {
-            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " := " << std::hex << (int64_t)v;
+        template <> void set_reg<>(int r, int8_t v) {
+            VLOG(1) << reg_spaces << reg_name<int8_t>(r) << " := " << std::hex
+                    << static_cast<int64_t>(v);
             if (has_rex())
                 *reinterpret_cast<int8_t *>(m_reg + r) = v;
             else
                 *(reinterpret_cast<int8_t *>(m_reg + (r & 3)) + (r & 4 != 0 ? 1 : 0)) = v;
         }
 
-        template <typename T> inline T M() const {
+        template <typename T> T M() const {
             int64_t addr = mem();
             T result = *reinterpret_cast<T *>(addr);
             VLOG(1) << mem_spaces << "*" << std::hex << addr << " -> " << std::hex
-                    << (int64_t)result;
+                    << static_cast<int64_t>(result);
             return result;
         }
 
-        template <typename T> inline void M(T v) {
+        template <typename T> void M(T v) {
             int64_t addr = mem();
-            VLOG(1) << mem_spaces << "*" << std::hex << addr << " := " << std::hex << (int64_t)v;
+            VLOG(1) << mem_spaces << "*" << std::hex << addr << " := " << std::hex
+                    << static_cast<int64_t>(v);
             *reinterpret_cast<T *>(addr) = v;
         }
 
-        template <typename T> inline T G() const { return get_reg<T>(reg); }
+        template <typename T> T G() const { return get_reg<T>(reg); }
 
-        template <typename T> inline void G(T v) { set_reg<T>(reg, v); }
+        template <typename T> void G(T v) { set_reg<T>(reg, v); }
 
-        template <typename T> inline T R() const { return get_reg<T>(rm); }
+        template <typename T> T R() const { return get_reg<T>(rm); }
 
-        template <typename T> inline void R(T v) { set_reg<T>(rm, v); }
+        template <typename T> void R(T v) { set_reg<T>(rm, v); }
 
-        template <typename T> inline T E() const { return mod == 3 ? R<T>() : M<T>(); }
+        template <typename T> T E() const { return mod == 3 ? R<T>() : M<T>(); }
 
-        template <typename T> inline void E(T v) {
+        template <typename T> void E(T v) {
             if (mod == 3)
                 R<T>(v);
             else
@@ -1338,28 +1301,28 @@ namespace jitpp {
 
         // Instruction group 1.
 
-        inline int64_t add(int64_t x, int64_t y) { return handle_rflags(add_flags, x + y, x, y); }
-        inline int64_t sub(int64_t x, int64_t y) { return handle_rflags(sub_flags, x - y, x, y); }
-        inline int64_t and_(int64_t x, int64_t y) {
+        int64_t add(int64_t x, int64_t y) { return handle_rflags(add_flags, x + y, x, y); }
+        int64_t sub(int64_t x, int64_t y) { return handle_rflags(sub_flags, x - y, x, y); }
+        int64_t and_(int64_t x, int64_t y) {
             VLOG(1) << std::hex << x << " & " << y << " = " << (x & y);
             return handle_rflags(logic_flags, x & y);
         }
-        inline int64_t or_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x | y); }
-        inline int64_t xor_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x ^ y); }
-        inline int64_t adc(int64_t x, int64_t y) {
+        int64_t or_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x | y); }
+        int64_t xor_(int64_t x, int64_t y) { return handle_rflags(logic_flags, x ^ y); }
+        int64_t adc(int64_t x, int64_t y) {
             if (cf())
                 return handle_rflags(adc_flags, x + y + 1, x, y);
             else
                 return handle_rflags(add_flags, x + y, x, y);
         }
-        template <typename T> inline int64_t sbb(int64_t x, int64_t y) {
+        template <typename T> int64_t sbb(int64_t x, int64_t y) {
             if (cf())
                 return handle_rflags(group_1_traits<T>::sbb_flags, x - y - 1, x, y);
             else
                 return handle_rflags(sub_flags, x - y, x, y);
         }
 
-        template <typename T> inline void interpret_group_1(int64_t imm) {
+        template <typename T> void interpret_group_1(int64_t imm) {
             switch (reg) {
             case 0:
                 E<T>(add(E<T>(), imm));
@@ -1390,32 +1353,32 @@ namespace jitpp {
             }
         }
 
-        static inline const flags::handler add_flags = {add_cf, sbb_af, add_of, OSZAPC, 0};
-        static inline const flags::handler adc_flags = {adc_cf, sbb_af, add_of, OSZAPC, 0};
-        static inline const flags::handler sub_flags = {sub_cf, sbb_af, sbb_of, OSZAPC, 0};
-        static inline const flags::handler logic_flags = {bad_flag, bad_flag, bad_flag,
-                                                          SF | ZF | PF, OF | AF | CF};
+        static constexpr flags::handler add_flags = {add_cf, sbb_af, add_of, OSZAPC, 0};
+        static constexpr flags::handler adc_flags = {adc_cf, sbb_af, add_of, OSZAPC, 0};
+        static constexpr flags::handler sub_flags = {sub_cf, sbb_af, sbb_of, OSZAPC, 0};
+        static constexpr flags::handler logic_flags = {bad_flag, bad_flag, bad_flag, SF | ZF | PF,
+                                                       OF | AF | CF};
 
         // Instruction group 2.
 
-        template <typename T> inline int64_t sal(int64_t x, int count) {
+        template <typename T> int64_t sal(int64_t x, int count) {
             return handle_rflags(group_2_traits<T>::sal_flags, x << count, x, count);
         }
-        template <typename T> inline int64_t sar(int64_t x, int count) {
+        template <typename T> int64_t sar(int64_t x, int count) {
             return handle_rflags(group_2_traits<T>::sar_flags, x >> count, x, count);
         }
-        template <typename T> inline uint64_t shr(uint64_t x, int count) {
+        template <typename T> uint64_t shr(uint64_t x, int count) {
             return handle_rflags(group_2_traits<T>::shr_flags, x >> count, x, count);
         }
-        template <typename T> inline uint64_t rol(uint64_t x, int count) {
+        template <typename T> uint64_t rol(uint64_t x, int count) {
             return handle_rflags(group_2_traits<T>::rol_flags,
                                  (x << count) | (x >> (group_2_traits<T>::size - count)), x, count);
         }
-        template <typename T> inline uint64_t ror(uint64_t x, int count) {
+        template <typename T> uint64_t ror(uint64_t x, int count) {
             return handle_rflags(group_2_traits<T>::ror_flags,
                                  (x << (group_2_traits<T>::size - count)) | (x >> count), x, count);
         }
-        template <typename T> inline uint64_t rcl(uint64_t x, int count) {
+        template <typename T> uint64_t rcl(uint64_t x, int count) {
             uint64_t carry_bit = cf() ? 1 : 0;
             uint64_t result = (x << count) | carry_bit << (count - 1);
             if (count != 1)
@@ -1425,7 +1388,7 @@ namespace jitpp {
             of(carry_result ^ (result < 0));
             return result;
         }
-        template <typename T> inline uint64_t rcr(uint64_t x, int count) {
+        template <typename T> uint64_t rcr(uint64_t x, int count) {
             uint64_t carry_bit = cf() ? 1 : 0;
             uint64_t result = (x >> count) | (carry_bit << (group_2_traits<T>::size - count));
             if (count != 1)
@@ -1436,7 +1399,7 @@ namespace jitpp {
             return result;
         }
 
-        template <typename T> inline uint64_t shrd(uint64_t x, uint64_t y, int count) {
+        template <typename T> uint64_t shrd(uint64_t x, uint64_t y, int count) {
             return handle_rflags(group_2_traits<T>::shrd_flags,
                                  (y << (group_2_traits<T>::size - count)) | (x >> count), x, count);
         }
@@ -1476,12 +1439,12 @@ namespace jitpp {
 
         // Instruction group 3.
 
-        template <typename T> inline int64_t neg(int64_t x) {
+        template <typename T> int64_t neg(int64_t x) {
             return handle_rflags(group_3_traits<T>::neg_flags, -x);
         }
 
-        template <typename T> inline void mul();
-        template <> inline void mul<int64_t>() {
+        template <typename T> void mul();
+        template <> void mul<int64_t>() {
             int64_t rax = get_reg<int64_t>(0);
             int64_t rdx;
             int64_t multiplier = E<int64_t>();
@@ -1495,7 +1458,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void mul<int32_t>() {
+        template <> void mul<int32_t>() {
             int32_t eax = get_reg<int32_t>(0);
             int32_t edx;
             int32_t multiplier = E<int32_t>();
@@ -1509,7 +1472,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void mul<int16_t>() {
+        template <> void mul<int16_t>() {
             int16_t ax = get_reg<int16_t>(0);
             int16_t dx;
             int16_t multiplier = E<int16_t>();
@@ -1523,7 +1486,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void mul<int8_t>() {
+        template <> void mul<int8_t>() {
             int8_t al = get_reg<int8_t>(0);
             int16_t ax;
             int8_t multiplier = E<int8_t>();
@@ -1536,8 +1499,8 @@ namespace jitpp {
             cf(c);
         }
 
-        template <typename T> inline void imul();
-        template <> inline void imul<int64_t>() {
+        template <typename T> void imul();
+        template <> void imul<int64_t>() {
             int64_t rax = get_reg<int64_t>(0);
             int64_t rdx;
             int64_t multiplier = E<int64_t>();
@@ -1551,7 +1514,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void imul<int32_t>() {
+        template <> void imul<int32_t>() {
             int32_t eax = get_reg<int32_t>(0);
             int32_t edx;
             int32_t multiplier = E<int32_t>();
@@ -1565,7 +1528,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void imul<int16_t>() {
+        template <> void imul<int16_t>() {
             int16_t ax = get_reg<int16_t>(0);
             int16_t dx;
             int16_t multiplier = E<int16_t>();
@@ -1579,7 +1542,7 @@ namespace jitpp {
             cf(c);
         }
 
-        template <> inline void imul<int8_t>() {
+        template <> void imul<int8_t>() {
             int8_t al = get_reg<int8_t>(0);
             int16_t ax;
             int8_t multiplier = E<int8_t>();
@@ -1592,8 +1555,8 @@ namespace jitpp {
             cf(c);
         }
 
-        template <typename T> inline void div();
-        template <> inline void div<int64_t>() {
+        template <typename T> void div();
+        template <> void div<int64_t>() {
             int64_t rax = get_reg<int64_t>(0);
             int64_t rdx = get_reg<int64_t>(2);
             int64_t divisor = E<int64_t>();
@@ -1602,7 +1565,7 @@ namespace jitpp {
             set_reg<int64_t>(2, rdx);
         }
 
-        template <> inline void div<int32_t>() {
+        template <> void div<int32_t>() {
             int32_t eax = get_reg<int32_t>(0);
             int32_t edx = get_reg<int32_t>(2);
             int32_t divisor = E<int32_t>();
@@ -1611,7 +1574,7 @@ namespace jitpp {
             set_reg<int32_t>(2, edx);
         }
 
-        template <> inline void div<int16_t>() {
+        template <> void div<int16_t>() {
             int16_t ax = get_reg<int16_t>(0);
             int16_t dx = get_reg<int16_t>(2);
             int16_t divisor = E<int16_t>();
@@ -1620,15 +1583,15 @@ namespace jitpp {
             set_reg<int16_t>(2, dx);
         }
 
-        template <> inline void div<int8_t>() {
+        template <> void div<int8_t>() {
             int16_t ax = get_reg<int64_t>(0);
             int8_t divisor = E<int64_t>();
             __asm__("divb %1" : "=a"(ax) : "q"(divisor), "a"(ax));
             set_reg<int16_t>(0, ax);
         }
 
-        template <typename T> inline void idiv();
-        template <> inline void idiv<int64_t>() {
+        template <typename T> void idiv();
+        template <> void idiv<int64_t>() {
             int64_t rax = get_reg<int64_t>(0);
             int64_t rdx = get_reg<int64_t>(2);
             int64_t idivisor = E<int64_t>();
@@ -1637,7 +1600,7 @@ namespace jitpp {
             set_reg<int64_t>(2, rdx);
         }
 
-        template <> inline void idiv<int32_t>() {
+        template <> void idiv<int32_t>() {
             int32_t eax = get_reg<int32_t>(0);
             int32_t edx = get_reg<int32_t>(2);
             int32_t idivisor = E<int32_t>();
@@ -1646,7 +1609,7 @@ namespace jitpp {
             set_reg<int32_t>(2, edx);
         }
 
-        template <> inline void idiv<int16_t>() {
+        template <> void idiv<int16_t>() {
             int16_t ax = get_reg<int16_t>(0);
             int16_t dx = get_reg<int16_t>(2);
             int16_t idivisor = E<int16_t>();
@@ -1655,14 +1618,14 @@ namespace jitpp {
             set_reg<int16_t>(2, dx);
         }
 
-        template <> inline void idiv<int8_t>() {
+        template <> void idiv<int8_t>() {
             int16_t ax = get_reg<int64_t>(0);
             int8_t idivisor = E<int64_t>();
             __asm__("idivb %1" : "=a"(ax) : "q"(idivisor), "a"(ax));
             set_reg<int16_t>(0, ax);
         }
 
-        template <typename T> inline void interpret_group_3() {
+        template <typename T> void interpret_group_3() {
             switch (reg) {
             case 0 ... 1:
                 and_(E<T>(), imm);
@@ -1692,13 +1655,13 @@ namespace jitpp {
 
         // Instruction group 4.
 
-        template <typename T> inline int64_t inc(int64_t x) {
+        template <typename T> int64_t inc(int64_t x) {
             return handle_rflags(group_4_traits<T>::inc_flags, x + 1);
         }
-        template <typename T> inline int64_t dec(int64_t x) {
+        template <typename T> int64_t dec(int64_t x) {
             return handle_rflags(group_4_traits<T>::dec_flags, x - 1);
         }
-        template <typename T> inline void interpret_group_4() {
+        template <typename T> void interpret_group_4() {
             switch (reg) {
             case 0:
                 E<T>(inc<T>(E<T>()));
@@ -1713,7 +1676,7 @@ namespace jitpp {
 
         // Instruction group 5.
 
-        template <typename T> inline void interpret_group_5() {
+        template <typename T> void interpret_group_5() {
             switch (reg) {
             case 0:
                 E<T>(inc<T>(E<T>()));
@@ -1744,22 +1707,22 @@ namespace jitpp {
 
         // Instruction group 6.
 
-        inline uint16_t str() {
+        uint16_t str() {
             uint16_t result;
             asm("str %0" : "=q"(result)::"memory");
             return result;
         }
-        inline void verr(int16_t selector) {
+        void verr(int16_t selector) {
             int8_t zero;
             asm("verr %1; setz %0" : "=q"(zero) : "q"(selector) : "memory");
             zf(zero != 0);
         }
-        inline void verw(int16_t selector) {
+        void verw(int16_t selector) {
             int8_t zero;
             asm("verw %1; setz %0" : "=q"(zero) : "q"(selector) : "memory");
             zf(zero != 0);
         }
-        template <typename os> inline void interpret_group_6() {
+        template <typename os> void interpret_group_6() {
             // memory operand
             switch (reg) {
             case 0:
@@ -1797,14 +1760,14 @@ namespace jitpp {
             rdx() = RDX;
         }
         // monitor a linear region of memory starting at RAX for changes
-        inline void monitor() {
+        void monitor() {
             int64_t RAX = rax();
             int64_t RCX = rcx();
             int64_t RDX = rdx();
             __asm__ __volatile__("monitor" ::"a"(RAX), "c"(RCX), "d"(RDX) : "memory");
         }
         // wait for the changes we are monitoring to occur
-        inline void mwait() {
+        void mwait() {
             int64_t RAX = rax();
             int64_t RCX = rcx();
             __asm__ __volatile__("mwait" ::"a"(RAX), "c"(RCX) : "memory");
@@ -1814,7 +1777,7 @@ namespace jitpp {
             __asm__("smsw %0" : "=q"(result)::"memory");
             return result;
         }
-        template <typename os> inline void interpret_group_7() {
+        template <typename os> void interpret_group_7() {
             if (mod != 3) {
                 // memory operand
                 switch (reg) {
@@ -1890,25 +1853,25 @@ namespace jitpp {
 
         // Miscellaneous instructions.
 
-        template <typename T> inline void cmpxchg() {
+        template <typename T> void cmpxchg() {
             int8_t value = E<T>();
             if (zf(value == get_reg<T>(0)))
                 E<T>(G<T>());
             else
                 set_reg<T>(0, value);
         }
-        template <typename T> inline void xchg() {
+        template <typename T> void xchg() {
             T t = G<T>();
             G<T>(E<T>());
             E<T>(t);
         }
-        template <typename T> inline void xchg(int r) {
+        template <typename T> void xchg(int r) {
             T t = get_reg<T>(r);
             set_reg<T>(r, get_reg<T>(0));
             set_reg<T>(0, t);
         }
 
-        template <typename T> inline void movs() {
+        template <typename T> void movs() {
             int64_t base = seg_base();
             T *s = reinterpret_cast<T *>(base + rsi());
             T *d = reinterpret_cast<T *>(rdi());
@@ -2011,12 +1974,12 @@ namespace jitpp {
 
         // Opcode dispatch.
 
-        template <typename os> inline void interpret_opcode() {
-            typedef int8_t b;
-            typedef int16_t w;
-            typedef int32_t d;
-            typedef typename os::v v;
-            typedef typename os::z z;
+        template <typename os> void interpret_opcode() {
+            using b = int8_t;
+            using w = int16_t;
+            using d = int32_t;
+            using v = typename os::v;
+            using z = typename os::z;
 
             switch (code) {
             case 0x00:
@@ -2536,8 +2499,8 @@ namespace jitpp {
 
         // Locked instructions.
 
-        template <typename T> inline void lock_inc(T *ptr);
-        template <> inline void lock_inc<>(int8_t *ptr) {
+        template <typename T> void lock_inc(T *ptr);
+        template <> void lock_inc<>(int8_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; incb %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2545,7 +2508,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_inc<>(int16_t *ptr) {
+        template <> void lock_inc<>(int16_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; incw %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2553,7 +2516,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_inc<>(int32_t *ptr) {
+        template <> void lock_inc<>(int32_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; incl %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2561,7 +2524,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_inc<>(int64_t *ptr) {
+        template <> void lock_inc<>(int64_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; incq %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2569,8 +2532,8 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <typename T> inline void lock_dec(T *ptr);
-        template <> inline void lock_dec<>(int8_t *ptr) {
+        template <typename T> void lock_dec(T *ptr);
+        template <> void lock_dec<>(int8_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; decb %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2578,7 +2541,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_dec<>(int16_t *ptr) {
+        template <> void lock_dec<>(int16_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; decw %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2586,7 +2549,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_dec<>(int32_t *ptr) {
+        template <> void lock_dec<>(int32_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; decl %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2594,7 +2557,7 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <> inline void lock_dec<>(int64_t *ptr) {
+        template <> void lock_dec<>(int64_t *ptr) {
             int64_t flags;
             __asm__ __volatile__("lock; decq %0\n\tpushfq\n\tpopq %1"
                                  : "=m"(*ptr), "=qm"(flags)
@@ -2602,8 +2565,8 @@ namespace jitpp {
             set_flags(flags::OSZAP, flags);
         }
 
-        template <typename T> inline T lock_cmpxchg(T *p, T o, T n);
-        template <> inline int8_t lock_cmpxchg<>(int8_t *p, int8_t o, int8_t n) {
+        template <typename T> T lock_cmpxchg(T *p, T o, T n);
+        template <> int8_t lock_cmpxchg<>(int8_t *p, int8_t o, int8_t n) {
             int8_t r;
             __asm__ __volatile__("lock; cmpxchgb %2,%1"
                                  : "=a"(r), "=m"(*p)
@@ -2612,7 +2575,7 @@ namespace jitpp {
             return r;
         }
 
-        template <> inline int16_t lock_cmpxchg<>(int16_t *p, int16_t o, int16_t n) {
+        template <> int16_t lock_cmpxchg<>(int16_t *p, int16_t o, int16_t n) {
             int16_t r;
             __asm__ __volatile__("lock; cmpxchgw %2,%1"
                                  : "=a"(r), "=m"(*p)
@@ -2621,7 +2584,7 @@ namespace jitpp {
             return r;
         }
 
-        template <> inline int32_t lock_cmpxchg<>(int32_t *p, int32_t o, int32_t n) {
+        template <> int32_t lock_cmpxchg<>(int32_t *p, int32_t o, int32_t n) {
             int32_t r;
             __asm__ __volatile__("lock; cmpxchgl %2,%1"
                                  : "=a"(r), "=m"(*p)
@@ -2630,7 +2593,7 @@ namespace jitpp {
             return r;
         }
 
-        template <> inline int64_t lock_cmpxchg<>(int64_t *p, int64_t o, int64_t n) {
+        template <> int64_t lock_cmpxchg<>(int64_t *p, int64_t o, int64_t n) {
             int64_t r;
             __asm__ __volatile__("lock; cmpxchgq %2,%1"
                                  : "=a"(r), "=m"(*p)
@@ -2640,10 +2603,10 @@ namespace jitpp {
         }
 
         template <typename os> void interpret_locked_opcode() {
-            typedef int8_t b;
-            typedef int16_t w;
-            typedef typename os::v v;
-            typedef typename os::z z;
+            using b = int8_t;
+            using w = int16_t;
+            using v = typename os::v;
+            using z = typename os::z;
 
             if (mod == 3)
                 illegal();
@@ -2689,7 +2652,7 @@ namespace jitpp {
         }
     };
 
-    static_assert(std::is_standard_layout<interpreter>::value,
+    static_assert(std::is_standard_layout_v<interpreter>,
                   "assembly requires standard-layout state");
     static_assert(offsetof(interpreter, m_reg) == 0x10, "assembly offset: m_reg");
     static_assert(offsetof(interpreter, m_rip) == 0x90, "assembly offset: m_rip");
@@ -2703,7 +2666,7 @@ namespace jitpp {
 namespace {
     void *call_tracer_run(void *t) {
         static_cast<jitpp::interpreter *>(t)->run();
-        return 0; // this could return the function pointer to execute on subsequent runs
+        return nullptr;
     }
 } // namespace
 
@@ -2734,7 +2697,7 @@ namespace jitpp {
             break;
             // fall through
         case 0:
-            pthread_join(thread, 0);
+            pthread_join(thread, nullptr);
             break;
         }
         pthread_attr_destroy(&attr);

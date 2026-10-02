@@ -24,6 +24,18 @@ The decoder's state, prefix helpers, recipe constants, `encoding_lut`, and
 describes the table and its validation boundary. Template specializations live
 beside their primary declarations rather than in separate implementation headers.
 
+## C++ conventions
+
+The build uses C++26 mode on the supported Clang toolchain. Prefer `using`
+aliases, `constexpr` data, defaulted/deleted special members, `nullptr`, and
+standard attributes. Put static template data directly in its owning class.
+Use standard library facilities when they remove custom machinery: parity uses
+`std::popcount`, and lock ownership transfers with `std::exchange`.
+
+Keep compile-time construction local to the data it builds, as with the
+`consteval` decoder-table initializer. The raw saved-state arrays remain tied to
+the assembly layout; their offsets are checked at compile time.
+
 ## Module ownership and assembly
 
 The interpreter and its supporting definitions are written directly in the

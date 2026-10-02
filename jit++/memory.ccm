@@ -1,6 +1,7 @@
 module;
 #include <algorithm>
 #include <functional>
+#include <utility>
 #include <iostream>
 #include <vector>
 #include <pthread.h>
@@ -11,11 +12,6 @@ module;
 #include <glog/logging.h>
 
 namespace jitpp {
-    class move {};
-    class split {};
-} // namespace jitpp
-
-namespace jitpp {
 
     class native_rw_mutex {
       public:
@@ -23,9 +19,9 @@ namespace jitpp {
         ~native_rw_mutex();
         operator pthread_rwlock_t &() { return m_self; }
         operator const pthread_rwlock_t &() const { return m_self; }
-        static const bool is_rw_mutex = true;
-        static const bool is_fair_mutex = false;
-        static const bool is_recursive_mutex = false;
+        static constexpr bool is_rw_mutex = true;
+        static constexpr bool is_fair_mutex = false;
+        static constexpr bool is_recursive_mutex = false;
         void rdlock();
         void wrlock();
         void unlock();
@@ -34,15 +30,15 @@ namespace jitpp {
         pthread_rwlock_t m_self;
 
         // disable copy & assignment constructors
-        native_rw_mutex(const native_rw_mutex &);
-        void operator=(const native_rw_mutex &);
+        native_rw_mutex(const native_rw_mutex &) = delete;
+        native_rw_mutex &operator=(const native_rw_mutex &) = delete;
 
       public:
         class scoped_lock {
           public:
             friend void swap(scoped_lock &a, scoped_lock &b) { std::swap(a.m_lock, b.m_lock); }
             scoped_lock();
-            scoped_lock(scoped_lock &peer, move);
+            scoped_lock(scoped_lock &&peer) noexcept;
             scoped_lock(pthread_rwlock_t &lock, bool write = true);
             ~scoped_lock();
 
@@ -53,15 +49,15 @@ namespace jitpp {
             pthread_rwlock_t *m_lock;
 
             // disable copy & assignment constructors
-            scoped_lock(const scoped_lock &);
-            void operator=(const scoped_lock &);
+            scoped_lock(const scoped_lock &) = delete;
+            scoped_lock &operator=(const scoped_lock &) = delete;
         };
     };
 } // namespace jitpp
 
 namespace jitpp {
 
-    native_rw_mutex::native_rw_mutex() { pthread_rwlock_init(&m_self, 0); }
+    native_rw_mutex::native_rw_mutex() { pthread_rwlock_init(&m_self, nullptr); }
 
     native_rw_mutex::~native_rw_mutex() { pthread_rwlock_destroy(&m_self); }
 
@@ -73,7 +69,7 @@ namespace jitpp {
     }
     void native_rw_mutex::unlock() { pthread_rwlock_unlock(&m_self); }
 
-    native_rw_mutex::scoped_lock::scoped_lock() : m_lock(0) {}
+    native_rw_mutex::scoped_lock::scoped_lock() : m_lock(nullptr) {}
 
     native_rw_mutex::scoped_lock::scoped_lock(pthread_rwlock_t &lock, bool write) : m_lock(&lock) {
         if (write)
@@ -82,17 +78,16 @@ namespace jitpp {
             CHECK_EQ(pthread_rwlock_rdlock(m_lock), 0) << "scoped read lock failed";
     }
 
-    native_rw_mutex::scoped_lock::scoped_lock(scoped_lock &peer, move) : m_lock(peer.m_lock) {
-        peer.m_lock = 0;
-    }
+    native_rw_mutex::scoped_lock::scoped_lock(scoped_lock &&peer) noexcept
+        : m_lock(std::exchange(peer.m_lock, nullptr)) {}
 
     native_rw_mutex::scoped_lock::~scoped_lock() {
-        if (m_lock != 0)
+        if (m_lock != nullptr)
             pthread_rwlock_unlock(m_lock);
     }
 
     void native_rw_mutex::scoped_lock::acquire(pthread_rwlock_t &lock, bool write) {
-        if (m_lock != 0)
+        if (m_lock != nullptr)
             pthread_rwlock_unlock(m_lock);
 
         m_lock = &lock;
@@ -104,9 +99,9 @@ namespace jitpp {
     }
 
     void native_rw_mutex::scoped_lock::release() {
-        if (m_lock != 0)
+        if (m_lock != nullptr)
             pthread_rwlock_unlock(m_lock);
-        m_lock = 0;
+        m_lock = nullptr;
     }
 
 } // namespace jitpp
@@ -117,13 +112,13 @@ namespace jitpp {
 // also could generational gc perhaps give a better approximation of 'const' member lookups?
 
 namespace jitpp {
-    typedef int memory_permissions;
+    using memory_permissions = int;
 
     namespace memory_permission {
-        static const memory_permissions empty = 0;
-        static const memory_permissions read = 1;
-        static const memory_permissions write = 2;
-        static const memory_permissions execute = 4;
+        static constexpr memory_permissions empty = 0;
+        static constexpr memory_permissions read = 1;
+        static constexpr memory_permissions write = 2;
+        static constexpr memory_permissions execute = 4;
     } // namespace memory_permission
 
     // forward declaration
@@ -139,11 +134,9 @@ namespace jitpp {
             m_model->rdlock();
         }
         ~memory_permission_reader() { m_model->unlock(); }
-        inline virtual memory_permissions operator[](const void *addr) { return *(m_model)[addr]; }
-        inline bool is_const(const void *addr) {
-            return (*m_model)[addr] & memory_permission::write == 0;
-        }
-        inline bool is_executable(const void *addr) {
+        virtual memory_permissions operator[](const void *addr) { return *(m_model)[addr]; }
+        bool is_const(const void *addr) { return (*m_model)[addr] & memory_permission::write == 0; }
+        bool is_executable(const void *addr) {
             return (*m_model)[addr] & memory_permission::execute != 0;
         }
     };
@@ -155,26 +148,25 @@ namespace jitpp {
         virtual void unlock() = 0;
 
       public:
-        typedef memory_permission_reader<memory_permission_model> reader;
+        using reader = memory_permission_reader<memory_permission_model>;
         friend class memory_permission_reader<memory_permission_model>;
     };
 
     // a trivial model that doesn't let you assume anything about memory usage
     class trivial_memory_permission_model : public memory_permission_model {
       public:
-        typedef memory_permission_reader<trivial_memory_permission_model> reader;
+        using reader = memory_permission_reader<trivial_memory_permission_model>;
         friend class memory_permission_reader<trivial_memory_permission_model>;
 
-        trivial_memory_permission_model() {}
-        trivial_memory_permission_model(const trivial_memory_permission_model &) {}
-        trivial_memory_permission_model &operator=(const trivial_memory_permission_model &) {
-            return *this;
-        }
+        trivial_memory_permission_model() = default;
+        trivial_memory_permission_model(const trivial_memory_permission_model &) = default;
+        trivial_memory_permission_model &
+        operator=(const trivial_memory_permission_model &) = default;
 
       protected:
-        inline void rdlock() {}
-        inline void unlock() {}
-        inline virtual memory_permissions operator[](const void *addr) {
+        void rdlock() override {}
+        void unlock() override {}
+        memory_permissions operator[](const void *addr) override {
             return memory_permission::read | memory_permission::write | memory_permission::execute;
         }
     };
@@ -186,7 +178,7 @@ namespace jitpp {
     // top to accomodate those local strangenesses.
     class native_memory_permission_model : public memory_permission_model {
       public:
-        typedef memory_permission_reader<native_memory_permission_model> reader;
+        using reader = memory_permission_reader<native_memory_permission_model>;
         friend class memory_permission_reader<native_memory_permission_model>;
 
         // POD type
@@ -194,13 +186,13 @@ namespace jitpp {
             const void *start;
             const void *end;
             memory_permissions flags;
-            inline operator const void *() const { return start; }
+            operator const void *() const { return start; }
         };
 
         // you CAN create your own, but there is a singleton instance()
         // since this is inherently sharable
         native_memory_permission_model();
-        ~native_memory_permission_model();
+        ~native_memory_permission_model() = default;
 
         // call after something hinky is done to memory to ensure accurate permissions
         void clear();
@@ -209,8 +201,8 @@ namespace jitpp {
         static native_memory_permission_model &instance();
 
       private:
-        typedef native_rw_mutex mutex;
-        typedef std::vector<range> vector;
+        using mutex = native_rw_mutex;
+        using vector = std::vector<range>;
 
         mutex m_mutex;
         vector m_ranges;
@@ -219,9 +211,9 @@ namespace jitpp {
         void rebuild();
 
       protected:
-        void rdlock() { m_mutex.rdlock(); }
-        void unlock() { m_mutex.wrlock(); }
-        virtual memory_permissions operator[](const void *);
+        void rdlock() override { m_mutex.rdlock(); }
+        void unlock() override { m_mutex.wrlock(); }
+        memory_permissions operator[](const void *) override;
     };
 } // namespace jitpp
 
@@ -236,7 +228,7 @@ namespace {
     size_t proc_self_maps_length() {
         int f = open("/proc/self/maps", O_RDONLY);
         size_t total = 0;
-        static const size_t buf_size = 512;
+        static constexpr size_t buf_size = 512;
         char buf[buf_size];
         ssize_t result;
         do {
@@ -267,12 +259,12 @@ namespace {
 
     class linux_proc_self_maps_parser {
       private:
-        typedef native_memory_permission_model::range range;
+        using range = native_memory_permission_model::range;
         const char *i;
 
       public:
         linux_proc_self_maps_parser(const char *body) : i(body) {}
-        inline bool eof() const { return i == 0 || *i == '\0'; }
+        bool eof() const { return i == nullptr || *i == '\0'; }
         range parse() {
             range result;
             while (*i == ' ')
@@ -304,24 +296,22 @@ namespace jitpp {
         // preemptive
         rebuild();
     }
-    native_memory_permission_model::~native_memory_permission_model() {}
     native_memory_permission_model::range *
     native_memory_permission_model::find_entry(const void *p) {
-        std::vector<range>::iterator i =
-            std::lower_bound(m_ranges.begin(), m_ranges.end(), p, std::less<const void *>());
-        return (i == m_ranges.end() || i->end < p) ? 0 : &*i;
+        auto i = std::lower_bound(m_ranges.begin(), m_ranges.end(), p, std::less<const void *>());
+        return (i == m_ranges.end() || i->end < p) ? nullptr : &*i;
     }
 
     // precondition: read lock held
     memory_permissions native_memory_permission_model::operator[](const void *p) {
         range *m = find_entry(p);
-        if (m != 0)
+        if (m != nullptr)
             return m->flags;
         rebuild();
         m = find_entry(p);
-        return (m != 0) ? m->flags
-                        : memory_permission::read | memory_permission::write |
-                              memory_permission::execute;
+        return (m != nullptr) ? m->flags
+                              : memory_permission::read | memory_permission::write |
+                                    memory_permission::execute;
     }
 
     // precondition: none
@@ -336,7 +326,7 @@ namespace jitpp {
         size_t file_size = 0;
         size_t old_file_size = 0;
         size_t buf_size = 0;
-        char *buf = 0;
+        char *buf = nullptr;
 
         mutex::scoped_lock lock(m_mutex, true);
 
@@ -354,7 +344,7 @@ namespace jitpp {
             }
 
             // check for alloca failure
-            CHECK(buf != 0) << "Unable to alloca " << file_size << " bytes in tracer.";
+            CHECK(buf != nullptr) << "Unable to alloca " << file_size << " bytes in tracer.";
 
             int f = open("/proc/self/maps", O_RDONLY);
             CHECK_NE(f, -1) << "Unable to reread /proc/self/maps";

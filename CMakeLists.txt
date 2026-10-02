@@ -12,8 +12,6 @@ find_package(gflags CONFIG REQUIRED)
 find_path(UDIS86_INCLUDE_DIR udis86.h REQUIRED)
 find_library(UDIS86_LIBRARY udis86 REQUIRED)
 
-configure_file(cmake/config.h.in generated/jit++/config.h COPYONLY)
-
 add_library(jitpp STATIC
     jit++/interpreting/tracer_start.S
 )
@@ -29,8 +27,6 @@ target_sources(jitpp PRIVATE FILE_SET internal_modules TYPE CXX_MODULES FILES
     jit++/memory.ccm
 )
 target_include_directories(jitpp PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated"
-    "${CMAKE_CURRENT_SOURCE_DIR}"
     "${UDIS86_INCLUDE_DIR}"
 )
 target_link_libraries(jitpp PRIVATE glog::glog ${GFLAGS_TARGET} Threads::Threads

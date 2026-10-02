@@ -5,9 +5,9 @@ import jitpp;
 #include <cstdlib>
 #include <type_traits>
 
-static_assert(std::is_standard_layout<jitpp::interpreter>::value,
+static_assert(std::is_standard_layout_v<jitpp::interpreter>,
               "assembly state must have a standard layout");
-static_assert(!std::is_polymorphic<jitpp::interpreter>::value,
+static_assert(!std::is_polymorphic_v<jitpp::interpreter>,
               "the concrete interpreter needs no virtual dispatch");
 
 DECLARE_uint64(jitpp_steps);
@@ -75,6 +75,15 @@ int main(int argc, char ** argv) {
             "all instruction groups finish without fallback");
     require(interpreter.rdx() == 0xffffffe7LL && interpreter.rax() == 7 && memory == 9,
             "instruction groups share register and memory state");
+
+    // Check low-byte parity against the CPU, including ignored high bits.
+    for (unsigned byte = 0; byte != 256; ++byte) {
+        const auto value = static_cast<uint8_t>(byte);
+        uint8_t even;
+        asm("testb %1, %1; setp %0" : "=qm"(even) : "q"(value) : "cc");
+        interpreter.and_(0x100 | byte, 0x100 | byte);
+        require(interpreter.pf() == static_cast<bool>(even), "parity matches native flags");
+    }
 
     // RET's immediate counts bytes, independently of its return-address width.
     const unsigned char ret[] = {0xc2, 0x10, 0x00};
