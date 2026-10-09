@@ -1,5 +1,23 @@
 # jit++
 
+<!-- badges:start -->
+[![build](https://img.shields.io/github/actions/workflow/status/ekmett/jitplusplus/build.yml?branch=main&style=flat&label=build&logo=githubactions&logoColor=white)](https://github.com/ekmett/jitplusplus/actions/workflows/build.yml?query=branch%3Amain)
+[![issues](https://img.shields.io/github/issues/ekmett/jitplusplus?style=flat&label=issues&color=007ec6&logo=github&logoColor=white)](https://github.com/ekmett/jitplusplus/issues)
+[![commits](https://img.shields.io/github/commit-activity/w/ekmett/jitplusplus?style=flat&label=commits&color=007ec6&logo=github&logoColor=white)](https://github.com/ekmett/jitplusplus/activity)
+
+[![CMake: 3.30+](https://img.shields.io/static/v1?label=CMake&message=3.30%2B&color=064F8C&style=flat&logo=cmake&logoColor=white)](CMakeLists.txt)
+[![C++: 26](https://img.shields.io/static/v1?label=C%2B%2B&message=26&color=00599C&style=flat&logo=cplusplus&logoColor=white)](README.md)
+[![Clang: 19](https://img.shields.io/static/v1?label=Clang&message=19&color=6f42c1&style=flat&logo=llvm&logoColor=white)](README.md)
+
+[![OS: Linux](https://img.shields.io/static/v1?label=OS&message=Linux&color=64748b&style=flat)](CMakeLists.txt)
+[![CPU: x86-64](https://img.shields.io/static/v1?label=CPU&message=x86-64&color=64748b&style=flat)](CMakeLists.txt)
+
+[![license: BSD-2-Clause OR Apache-2.0](assets/badges/license.svg)](https://github.com/ekmett/jitplusplus/blob/de293ad7c1abc07441add9342de8ca7fccc27afd/COPYING)
+[![Contributor Covenant: 2.0](https://img.shields.io/static/v1?label=Contributor+Covenant&message=2.0&color=007ec6&style=flat&logo=contributorcovenant&logoColor=white)](CODE_OF_CONDUCT.md)
+
+[![docs: read](https://img.shields.io/static/v1?label=docs&message=read&color=007ec6&style=flat)](docs/building.md)
+<!-- badges:end -->
+
 An experimental cooperative x86-64 interpreter. A call to `start()` captures
 machine state and begins interpreting the caller's instructions. `stop()` or an
 unsupported instruction returns execution to native code. The long-term aim is
