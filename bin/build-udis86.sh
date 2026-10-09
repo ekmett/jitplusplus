@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Edward Kmett <ekmett@gmail.com>
+# SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0
+
 # Build the original diagnostic disassembler with a Python 3 generator.
 # Usage: sh bin/build-udis86.sh /absolute/install/prefix
 set -eu

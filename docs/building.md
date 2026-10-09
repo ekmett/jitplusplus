@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Edward Kmett <ekmett@gmail.com>
+SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0
+-->
+
 # Building and using jit++
 
 The build uses CMake 3.30 or newer and Ninja. Clang 19 with its matching

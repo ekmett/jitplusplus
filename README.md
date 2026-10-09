@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Edward Kmett <ekmett@gmail.com>
+SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0
+-->
+
 # jit++
 
 An experimental cooperative x86-64 interpreter. A call to `start()` captures
@@ -55,4 +60,7 @@ stack. These checks establish a working foundation, not general x86-64 correctne
 
 ## License
 
-Copyright (c) 2008 Edward Kmett. All rights reserved. See [COPYING](COPYING).
+Copyright (c) 2008-2026 Edward Kmett. Licensed under
+[BSD-2-Clause](LICENSES/BSD-2-Clause.txt) OR [Apache-2.0](LICENSES/Apache-2.0.txt),
+at your option. See [COPYING](COPYING) and the
+[contribution and SPDX guidelines](CONTRIBUTING.md).

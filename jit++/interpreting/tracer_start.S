@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2008-2026 Edward Kmett <ekmett@gmail.com>
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0
+
 #define REG_OFFSET_RAX    0x10
 #define REG_OFFSET_RCX    0x18
 #define REG_OFFSET_RDX    0x20
